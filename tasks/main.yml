@@ -1,0 +1,125 @@
+---
+- name: "APT: install FreeIPA Server"
+  ansible.builtin.apt:
+    pkg:
+      - freeipa-server
+      - sssd-idp
+      - sssd-kcm
+      - sssd-tools
+      - krb5-pkinit
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: "DNF: install FreeIPA Server"
+  ansible.builtin.dnf:
+    name:
+      - freeipa-server
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: "Fix up paths in sssd idp support"
+  ansible.builtin.replace:
+    path: /etc/krb5.conf.d/sssd_enable_idp
+    regexp: "/lib64/"
+    replace: "/lib/x86_64-linux-gnu/"
+  when: ansible_os_family == 'Debian'
+
+- name: "RedHat: Allow firewall rules"
+  firewalld:
+    immediate: yes
+    permanent: yes
+    service: "{{ item }}"
+    state: enabled
+  with_items:
+    - "http"
+    - "https"
+    - "kerberos"
+    - "ldap"
+    - "ldaps"
+    - "kpasswd"
+  when: ansible_os_family == 'RedHat'
+
+- name: "UFW: Allow firewall rules"
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  with_items:
+    - { "port": "80",  "proto": "tcp" }
+    - { "port": "443", "proto": "tcp" }
+    - { "port": "389", "proto": "tcp" }
+    - { "port": "636", "proto": "tcp" }
+    - { "port": "88",  "proto": "udp" }
+    - { "port": "88",  "proto": "tcp" }
+    - { "port": "464", "proto": "udp" }
+    - { "port": "464", "proto": "tcp" }
+  when: ansible_os_family == 'Debian'
+
+- name: Determine if FreeIPA server is already configured on the current node
+  shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
+  changed_when: false
+  register: ipa_configured
+
+- name: Query which FreeIPA servers are configured
+  shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
+  register: ipa_configured_nodes
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['freeipa_servers']|unique|sort }}"
+  run_once: true
+  ignore_unreachable: true
+  failed_when: false
+  changed_when: false
+
+- name: Collect list of configured freeipa nodes
+  set_fact:
+    freeipa_configured_nodes: >-
+      {%- set configured_nodes = [] %}
+      {%- for node in ipa_configured_nodes.results %}
+      {%-   if node.rc|default(1) == 0 %}
+      {%-     do configured_nodes.append(node.item) %}
+      {%-   endif %}
+      {%- endfor %}
+      {{- configured_nodes|sort -}}
+
+- name: "FreeIPA: setup new cluster, first node"
+  shell: ipa-server-install --unattended --no-host-dns --mkhomedir --no-ntp --ssh-trust-dns --ds-password="{{ service_freeipa_dm_pass }}" --admin-password="{{ service_freeipa_admin_pass }}" --realm="{{ service_freeipa_realm }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}"
+  when: ipa_configured.rc != 0 and freeipa_configured_nodes | length == 0
+
+- name: "FreeIPA: enroll replica as a client"
+  shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0] }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
+  when: ipa_configured.rc != 0 and freeipa_configured_nodes | length > 0
+
+- name: "Get kerberos ticket for admin user"
+  shell: echo "{{ service_freeipa_admin_pass }}" | kinit admin
+  no_log: true
+
+- name: "Add replica to ipaservers host group"
+  shell: "ipa hostgroup-add-member ipaservers --hosts {{ inventory_hostname }}"
+  when: ipa_configured.rc != 0 and freeipa_configured_nodes | length > 0
+
+- name: "Configure replica"
+  shell: "ipa-replica-install --unattended"
+  when: ipa_configured.rc != 0 and freeipa_configured_nodes | length > 0
+
+- name: "Fix common-auth to work with IDP"
+  ansible.builtin.blockinfile:
+    path: /etc/pam.d/common-auth
+    insertbefore: '^#*auth.*\[.*\].*pam_unix.so nullok'
+    block: |
+      auth  [default=1 ignore=ignore success=ok]  pam_usertype.so isregular
+      auth  [default=1 ignore=ignore success=ok]  pam_localuser.so
+      auth  sufficient          pam_unix.so nullok
+      auth  [default=1 ignore=ignore success=ok]  pam_usertype.so isregular
+      auth  sufficient          pam_sss.so forward_pass
+    marker: "# {mark} ANSIBLE MANAGED BLOCK -- SSSD IDP SUPPORT"
+  when: ansible_os_family == 'Debian'
+
+- name: "Comment out lines that should no longer be used for auth"
+  ansible.builtin.replace:
+    path: /etc/pam.d/common-auth
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.val }}"
+  with_items:
+    - { "regexp": '^(auth.*\[.*\].*pam_unix.so nullok)',        "val": '#\1' }
+    - { "regexp": '^(auth.*\[.*\].*pam_sss.so use_first_pass)', "val": '#\1' }
+  when: ansible_os_family == 'Debian'
