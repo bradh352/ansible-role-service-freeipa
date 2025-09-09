@@ -81,13 +81,18 @@
       {%- endfor %}
       {{- configured_nodes|sort -}}
 
+- name: Determine if we need to install the server or replica
+  set_fact:
+    freeipa_install_server: "{{ true if (ipa_configured.rc != 0 and freeipa_configured_nodes | length == 0 and inventory_hostname == groups[freeipa_servers]|unique|sort|first) else false }}"
+    freeipa_install_replica: "{{ true if (ipa_configured.rc != 0 and (freeipa_configured_nodes | length > 0 or inventory_hostname != groups[freeipa_servers]|unique|sort|first)) else false }}"
+
 - name: "FreeIPA: setup new cluster, first node"
   shell: ipa-server-install --unattended --no-host-dns --mkhomedir --no-ntp --ssh-trust-dns --ds-password="{{ service_freeipa_dm_pass }}" --admin-password="{{ service_freeipa_admin_pass }}" --realm="{{ service_freeipa_realm }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}"
-  when: ipa_configured.rc != 0 and freeipa_configured_nodes | length == 0
+  when: freeipa_install_server
 
 - name: "FreeIPA: enroll replica as a client"
   shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0] }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
-  when: ipa_configured.rc != 0 and freeipa_configured_nodes | length > 0
+  when: freeipa_install_replica
 
 - name: "Get kerberos ticket for admin user"
   shell: echo "{{ service_freeipa_admin_pass }}" | kinit admin
@@ -95,11 +100,13 @@
 
 - name: "Add replica to ipaservers host group"
   shell: "ipa hostgroup-add-member ipaservers --hosts {{ inventory_hostname }}"
-  when: ipa_configured.rc != 0 and freeipa_configured_nodes | length > 0
+  throttle: 1
+  when: freeipa_install_replica
 
 - name: "Configure replica"
   shell: "ipa-replica-install --unattended"
-  when: ipa_configured.rc != 0 and freeipa_configured_nodes | length > 0
+  throttle: 1
+  when: freeipa_install_replica
 
 - name: "Fix common-auth to work with IDP"
   ansible.builtin.blockinfile:
