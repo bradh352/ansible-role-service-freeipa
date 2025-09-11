@@ -67,6 +67,7 @@
   with_items: "{{ groups['freeipa_servers']|unique|sort }}"
   run_once: true
   ignore_unreachable: true
+  ignore_errors: true
   failed_when: false
   changed_when: false
 
