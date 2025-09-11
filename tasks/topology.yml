@@ -1,0 +1,58 @@
+---
+- name: Read topology
+  script: fetch_topology.sh {{ freeipa_topology_suffix }}
+  register: freeipa_topology_data
+  failed_when: freeipa_topology_data.stdout | length == 0
+  changed_when: False
+
+- name: Topology data
+  set_fact:
+    freeipa_topology_data: "{{ freeipa_topology_data.stdout|from_yaml }}"
+
+- name: Topology data sort each subarray
+  set_fact:
+    freeipa_topology: >-
+      {%- set topology_list = [] %}
+      {%- for pair in freeipa_topology_data %}
+      {%-   do topology_list.append(pair|sort) %}
+      {%- endfor %}
+      {{- topology_list | sort -}}
+
+- name: "Determine expected topology"
+  set_fact:
+    freeipa_expected_topology: >-
+      {%- set serverpairs = [] %}
+      {%- for left in freeipa_configured_nodes %}
+      {%-   for right in freeipa_configured_nodes %}
+      {%-     if left != right %}
+      {%-       do serverpairs.append([left, right]) %}
+      {%-     endif %}
+      {%-   endfor %}
+      {%- endfor %}
+      {%- set expected_list = [] %}
+      {%- for pair in serverpairs %}
+      {%-   do expected_list.append(pair|sort) %}
+      {%- endfor %}
+      {{- expected_list | sort | unique -}}
+
+- name: "Create topologysegment peering"
+  set_fact:
+    freeipa_create_topology: >-
+      {%- set create_pairs = [] %}
+      {%- set ns = namespace(found=false) %}
+      {%- for expected_pair in freeipa_expected_topology %}
+      {%-   set ns.found=false %}
+      {%-   for topo_pair in freeipa_topology %}
+      {%-     if topo_pair == expected_pair %}
+      {%-       set ns.found=true %}
+      {%-     endif %}
+      {%-   endfor %}
+      {%-   if not ns.found %}
+      {%-     do create_pairs.append({ "left": expected_pair[0], "right": expected_pair[1]}) %}
+      {%-   endif %}
+      {%- endfor %}
+      {{- create_pairs -}}
+
+- name: "Create topology peering"
+  shell: "ipa topologysegment-add {{ freeipa_topology_suffix }} {{ item['left'] }}-to-{{ item['right'] }} --leftnode={{ item['left'] }} --rightnode={{ item['right'] }}"
+  with_items: "{{ freeipa_create_topology }}"

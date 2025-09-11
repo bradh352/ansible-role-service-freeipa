@@ -58,6 +58,7 @@
 - name: Determine if FreeIPA server is already configured on the current node
   shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
   changed_when: false
+  failed_when: false
   register: ipa_configured
 
 - name: Query which FreeIPA servers are configured
@@ -98,6 +99,7 @@
 - name: "Get kerberos ticket for admin user"
   shell: echo "{{ service_freeipa_admin_pass }}" | kinit admin
   no_log: true
+  changed_when: false
 
 - name: "Add replica to ipaservers host group"
   shell: "ipa hostgroup-add-member ipaservers --hosts {{ inventory_hostname }}"
@@ -105,9 +107,20 @@
   when: freeipa_install_replica
 
 - name: "Configure replica"
-  shell: "ipa-replica-install --unattended"
+  shell: "ipa-replica-install --unattended --setup-ca"
   throttle: 1
   when: freeipa_install_replica
+
+- name: "See if system is enrolled as a CA"
+  shell: "ipa server-find --topologysuffixes=ca --name={{ inventory_hostname }}"
+  failed_when: false
+  changed_when: false
+  register: ipa_is_ca
+
+- name: "Install CA server"
+  shell: ipa-ca-install --password="{{ service_freeipa_dm_pass }}" --skip-conncheck
+  throttle: 1
+  when: ipa_is_ca.rc != 0
 
 - name: "Fix common-auth to work with IDP"
   ansible.builtin.blockinfile:
@@ -131,3 +144,39 @@
     - { "regexp": '^(auth.*\[.*\].*pam_unix.so nullok)',        "val": '#\1' }
     - { "regexp": '^(auth.*\[.*\].*pam_sss.so use_first_pass)', "val": '#\1' }
   when: ansible_os_family == 'Debian'
+
+
+- name: Re-Query which FreeIPA servers are configured
+  shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
+  register: ipa_configured_nodes
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['freeipa_servers']|unique|sort }}"
+  run_once: true
+  ignore_unreachable: true
+  failed_when: false
+  changed_when: false
+
+- name: Re-Collect list of configured freeipa nodes
+  set_fact:
+    freeipa_configured_nodes: >-
+      {%- set configured_nodes = [] %}
+      {%- for node in ipa_configured_nodes.results %}
+      {%-   if node.rc|default(1) == 0 %}
+      {%-     do configured_nodes.append(node.item) %}
+      {%-   endif %}
+      {%- endfor %}
+      {{- configured_nodes|sort -}}
+
+- name: Configure topologysuffix domain
+  include_tasks: topology.yml
+  vars:
+    freeipa_topology_suffix: "domain"
+  when: freeipa_configured_nodes | length > 1
+  run_once: true
+
+- name: Configure topologysuffix ca
+  include_tasks: topology.yml
+  vars:
+    freeipa_topology_suffix: "ca"
+  when: freeipa_configured_nodes | length > 1
+  run_once: true
