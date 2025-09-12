@@ -4,6 +4,8 @@
     pkg:
       - "python3-ldap3"
       - "python3-click"
+      - "python3-pip"
+      - "python3-requests-gssapi"
     state: present
   when: ansible_os_family == 'Debian'
 
@@ -12,8 +14,15 @@
     name:
       - "python3-ldap3"
       - "python3-click"
+      - "python3-pip"
+      - "python3-requests-gssapi"
     state: present
   when: ansible_os_family == 'RedHat'
+
+- name: Install freeipa python module
+  ansible.builtin.pip:
+    name: python_freeipa
+    state: present
 
 - name: Copy IDP sync script
   copy:
@@ -39,3 +48,9 @@
   shell: ipa idp-add {{ service_freeipa_idpsync_idp_name }} --provider={{ service_freeipa_idpsync_provider }} --base-url={{ service_freeipa_idpsync_provider_domain }} --client-id={{ service_freeipa_idpsync_clientid }}
   when: idp_configured.rc != 0
 
+- name: "LDAPSYNC: Add cron task"
+  template:
+    src: freeipa-idpsync.cron
+    dest: /etc/cron.d/freeipa-idpsync
+    owner: root
+    mode: 0644

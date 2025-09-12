@@ -2,6 +2,7 @@
 """Script used to sync from an IDP as a source of truth to FreeIPA"""
 
 import configparser
+import subprocess
 import urllib3
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -43,29 +44,37 @@ class Group:
 @click.option(
     "--config-path",
     type=click.Path(exists=True, readable=True),
-    default="./freeipa_idpsync.conf",
+    default="/etc/ipa/freeipa_idpsync.conf",
     help="Configuration Path.",
 )
 @click.option(
     "--freeipa-password",
-    prompt=True,
     hide_input=True,
-    help="FreeIPA password",
+    help="FreeIPA password. If not passed will attempt to use the configured keytab.",
 )
 @click.option(
     "--dry-run",
     is_flag=True,
     help="Output what would be done",
 )
-def sync(config_path: str, freeipa_password: str, dry_run: bool):
+def sync(config_path: str, dry_run: bool, freeipa_password: Optional[str]):
     """Sync users and groups from IDP to FreeIPA"""
     config = configparser.ConfigParser()
     config.read(config_path)
 
-    client = ClientMeta(config["freeipa"]["server"], verify_ssl=strtobool(config["freeipa"]["verify_ssl"]))
-    client.login(config["freeipa"]["username"], freeipa_password)
+    if freeipa_password is None:
+        if config["freeipa"].get("user_keytab") == None or len(config["freeipa"]["user_keytab"]) == 0:
+            print("No user keytab in configurabion")
+            sys.exit(1)
+        subprocess.run(["kinit","-k", "-t", config["freeipa"]["user_keytab"], config["freeipa"]["username"]])
 
-    idp_users, idp_groups = fetch_ldap(config, idp_password)
+    client = ClientMeta(config["freeipa"]["server"], verify_ssl=strtobool(config["freeipa"]["verify_ssl"]))
+    if freeipa_password is None:
+        client.login_kerberos()
+    else:
+        client.login(config["freeipa"]["username"], freeipa_password)
+
+    idp_users, idp_groups = fetch_ldap(config)
     freeipa_users, freeipa_groups = fetch_freeipa(client, config)
 
     if dry_run:
@@ -375,13 +384,12 @@ def strtobool(val: str) -> bool:
     return False
 
 
-def fetch_ldap(config: configparser.ConfigParser, password: str) -> Tuple[Dict[str, User], Dict[str, Group]]:
+def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict[str, Group]]:
     """
     Retrieve all users an groups from LDAP server
 
     Parameters:
         config [ConfigParser]: Configuration containing "idp:ldap" section with appropriate parameters
-        password [str]: Password for "binddn" user
 
     Returns:
         Users [Dict[str, User]]: Dictionary of users.  The key is the username, the value is a class User instance.
@@ -515,9 +523,15 @@ def fetch_freeipa(client: ClientMeta, config: configparser.ConfigParser) -> Tupl
         auth_type = fetch_string(row, "ipauserauthtype")
         if auth_type is None:
             auth_type = "password"
+
         idp_name = fetch_string(row, "ipaidpconfiglink")
         if idp_name is None:
             idp_name = ""
+        else:
+            # Convert from cn=name,cn=idp,dc=example,dc=com
+            idp_name = idp_name.split(",")[0]
+            idp_name = idp_name.split("=")[1]
+
         idp_username = fetch_string(row, "ipaidpsub")
         if idp_username is None:
             idp_username = ""
