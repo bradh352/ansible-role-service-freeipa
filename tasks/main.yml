@@ -55,6 +55,16 @@
     - { "port": "464", "proto": "tcp" }
   when: ansible_os_family == 'Debian'
 
+- name: Fixup ansible password for this playbook if it was changed in the base role
+  set_fact:
+    ansible_password: "{{ superuser_password }}"
+    ansible_become_pass: "{{ superuser_password }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: True
+  no_log: true
+  when: ansible_user == superuser and ((superuser_created is defined and superuser_created.changed) or (superuser_pwchanged is defined and superuser_pwchanged.changed))
+  with_items: "{{ groups['freeipa_servers']|unique|sort }}"
+
 - name: Determine if FreeIPA server is already configured on the current node
   shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
   changed_when: false
@@ -83,10 +93,14 @@
       {%- endfor %}
       {{- configured_nodes|sort -}}
 
+- name: Determine primary node for bootstrap
+  set_fact:
+    freeipa_primary_node: "{{ groups['freeipa_servers'] | intersect(ansible_play_hosts) | unique | sort | first }}"
+
 - name: Determine if we need to install the server or replica
   set_fact:
-    freeipa_install_server: "{{ true if (ipa_configured.rc != 0 and freeipa_configured_nodes | length == 0 and inventory_hostname == groups[freeipa_servers]|unique|sort|first) else false }}"
-    freeipa_install_replica: "{{ true if (ipa_configured.rc != 0 and (freeipa_configured_nodes | length > 0 or inventory_hostname != groups[freeipa_servers]|unique|sort|first)) else false }}"
+    freeipa_install_server: "{{ true if (ipa_configured.rc != 0 and freeipa_configured_nodes | length == 0 and inventory_hostname == freeipa_primary_node) else false }}"
+    freeipa_install_replica: "{{ true if (ipa_configured.rc != 0 and (freeipa_configured_nodes | length > 0 or inventory_hostname != freeipa_primary_node)) else false }}"
 
 - name: "FreeIPA: setup new cluster, first node"
   shell: ipa-server-install --unattended --no-host-dns --mkhomedir --no-ntp --ssh-trust-dns --ds-password="{{ service_freeipa_dm_pass }}" --admin-password="{{ service_freeipa_admin_pass }}" --realm="{{ service_freeipa_realm }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}"
@@ -96,9 +110,11 @@
   shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0] }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
   when: freeipa_install_replica
 
-- name: "Get kerberos ticket for admin user"
-  shell: echo "{{ service_freeipa_admin_pass }}" | kinit admin
-  no_log: true
+- name: Admin Keytab
+  include_tasks: admin-keytab.yml
+
+- name: "Get kerberos ticket for admin user using admin keytab"
+  shell: kinit -k -t /etc/krb5.admin.keytab admin
   changed_when: false
 
 - name: "Add replica to ipaservers host group"
@@ -144,7 +160,6 @@
     - { "regexp": '^(auth.*\[.*\].*pam_unix.so nullok)',        "val": '#\1' }
     - { "regexp": '^(auth.*\[.*\].*pam_sss.so use_first_pass)', "val": '#\1' }
   when: ansible_os_family == 'Debian'
-
 
 - name: Re-Query which FreeIPA servers are configured
   shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"

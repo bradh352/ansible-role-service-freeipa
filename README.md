@@ -86,3 +86,15 @@ This has only been tested on RedHat derivatives (specifically Rocky Linux 10).
 
 * `freeipa_servers`: All servers must be a member of this group.  Servers will
   be joined together and replicate full-mesh.
+
+## TODO
+
+* Figure out security implications of /etc/krb5.admin.keytab which allows admin
+  to authenticate without a password on the server.
+* Figure out if we can enroll a host using the admin keytab without a password
+  otherwise we should have a host enrollment user.
+* Determine if `service_freeipa_admin_pass` and `service_freeipa_dm_pass` are
+  only really required on initial bring-up of first node.
+* See what happens to /etc/krb5.admin.keytab if the admin user's password changes.
+   * If its invalidated, we should probably create a separate admin user with a
+     random password for the /etc/krb5.admin.keytab purposes.
