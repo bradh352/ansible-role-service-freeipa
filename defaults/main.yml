@@ -1,0 +1,27 @@
+---
+service_freeipa_idpsync_enable: false
+service_freeipa_idpsync_local_users:
+  - admin
+service_freeipa_idpsync_local_groups:
+  - admins
+  - editors
+  - ipausers
+  - trust admins
+service_freeipa_idpsync_use_ssl: true
+service_freeipa_idpsync_ignore_users:
+service_freeipa_idpsync_ignore_groups:
+service_freeipa_idpsync_attr_username: "uid"
+service_freeipa_idpsync_attr_fullname: "cn"
+service_freeipa_idpsync_attr_fname: "givenName"
+service_freeipa_idpsync_attr_lname: "sn"
+service_freeipa_idpsync_attr_email: "mail"
+service_freeipa_idpsync_attr_shell: "loginShell"
+service_freeipa_idpsync_attr_uid: "uidNumber"
+service_freeipa_idpsync_attr_active: "organizationalStatus"
+service_freeipa_idpsync_active_values:
+  - "ACTIVE"
+  - "PASSWORD_EXPIRED"
+service_freeipa_idpsync_attr_group_name: "cn"
+service_freeipa_idpsync_attr_group_desc: "description"
+service_freeipa_idpsync_attr_group_members: "uniqueMember"
+

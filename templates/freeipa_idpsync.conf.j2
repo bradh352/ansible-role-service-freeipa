@@ -1,0 +1,89 @@
+# Free IPA Configuration
+[freeipa]
+# Server to use
+server=localhost
+
+# Whether to validate the server's TLS certificate
+verify_ssl=False
+
+# Username to use to authenticate
+username=admin
+
+# Comma delimited list of users to ignore from freeipa
+ignore_users={{ service_freeipa_idpsync_local_users | join(",") }}
+
+# Comma delimited list of groups to ignore from freeipa
+ignore_groups={{ service_freeipa_idpsync_local_groups | join(",") }}
+
+# Name configured for external IDP auth that all imported users should be
+# associated with.
+idp_name={{ service_freeipa_idpsync_idp_name }}
+
+
+# Upstream IDP configuration
+[idp]
+# Type of upstream idp to import from.  Currently only supports ldap.
+type="ldap"
+
+
+# If the upstream IDP is LDAP, these are the attributes
+[idp:ldap]
+# LDAP server to use
+server={{ service_freeipa_idpsync_server }}
+
+# Use SSL or not
+use_ssl={{ 'True' if service_freeipa_idpsync_use_ssl else 'False' }}
+
+# Bind DN for retrieving information
+binddn={{ service_freeipa_idpsync_binddn }}
+
+# Bind Password for BindDN
+bindpass={{ service_freeipa_idpsync_bindpass }}
+
+# Base for users
+userdn={{ service_freeipa_idpsync_userdn }}
+
+# Base for groups
+groupdn={{ service_freeipa_idpsync_groupdn }}
+
+# Comma delimited list of users to ignore from idp
+ignore_users={{ service_freeipa_idpsync_ignore_users | join(",") }}
+
+# Comma delimited list of groups to ignore from idp
+ignore_groups={{ service_freeipa_idpsync_ignore_groups | join(",") }}
+
+# User: Attribute for username
+attr_username={{ service_freeipa_idpsync_attr_username }}
+
+# User: Attribute for Full name
+attr_name={{ service_freeipa_idpsync_attr_fullname }}
+
+# User: Attribute for First Name
+attr_fname={{ service_freeipa_idpsync_attr_fname }}
+
+# User: Attribute for Last Name
+attr_lname={{ service_freeipa_idpsync_attr_lname }}
+
+# User: Attribute for Email
+attr_email={{ service_freeipa_idpsync_attr_email }}
+
+# User: Attribute for Login Shell.  Optional, upstream provider may not have this.
+attr_shell={{ service_freeipa_idpsync_attr_shell }}
+
+# User: Attribute for POSIX user id. Optional, upstream provider may not have this.
+attr_uid={{ service_freeipa_idpsync_attr_uid }}
+
+# User: Attribute to determine if user is active or not
+attr_active={{ service_freeipa_idpsync_attr_active }}
+
+# User: Comma delimited list of values if user is active.
+attr_active_values={{ service_freeipa_idpsync_active_values | join(",") }}
+
+# Group: Attribute for group name
+attr_group_name={{ service_freeipa_idpsync_attr_group_name }}
+
+# Group: Attribute for description
+attr_group_description={{ service_freeipa_idpsync_attr_group_desc }}
+
+# Group: Attribute for group members
+attr_group_members={{ service_freeipa_idpsync_attr_group_members }}

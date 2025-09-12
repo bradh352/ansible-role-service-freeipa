@@ -180,3 +180,7 @@
     freeipa_topology_suffix: "ca"
   when: freeipa_configured_nodes | length > 1
   run_once: true
+
+- name: Sync with external IDP
+  include_tasks: idp-sync.yml
+  when: service_freeipa_idpsync_enable

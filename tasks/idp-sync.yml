@@ -1,0 +1,41 @@
+---
+- name: "APT: Install components for sync script"
+  ansible.builtin.apt:
+    pkg:
+      - "python3-ldap3"
+      - "python3-click"
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: "DNF: Install components for sync script"
+  ansible.builtin.dnf:
+    name:
+      - "python3-ldap3"
+      - "python3-click"
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Copy IDP sync script
+  copy:
+    src: freeipa_idpsync.py
+    dest: /usr/local/bin/freeipa_idpsync.py
+    mode: 0700
+    owner: root
+
+- name: Install IDP sync configuration
+  template:
+    src: freeipa_idpsync.conf.j2
+    dest: /etc/ipa/freeipa_idpsync.conf
+    mode: 0600
+    owner: root
+
+- name: See if IDP provider is already configured
+  shell: ipa idp-show "{{ service_freeipa_idpsync_idp_name }}"
+  register: idp_configured
+  changed_when: false
+  failed_when: false
+
+- name: Configure IDP provider
+  shell: ipa idp-add {{ service_freeipa_idpsync_idp_name }} --provider={{ service_freeipa_idpsync_provider }} --base-url={{ service_freeipa_idpsync_provider_domain }} --client-id={{ service_freeipa_idpsync_clientid }}
+  when: idp_configured.rc != 0
+
