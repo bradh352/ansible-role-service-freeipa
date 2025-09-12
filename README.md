@@ -24,6 +24,64 @@ This has only been tested on RedHat derivatives (specifically Rocky Linux 10).
 * `service_freeipa_realm`: Realm name to set.  Typically the upper case version
   of the domain.
 
+### Variables for syncing from a remote IDP
+* `service_freeipa_idpsync_enable`: Boolean.  Whether or not to sync users from
+  an idp's ldap server. The remaining `service_freeipa_idpsync_*` configuration
+  values should be set when this is enabled.
+* `service_freeipa_idpsync_idp_name`: Required. Name of IDP provider registered
+  in FreeIPA to associate users with.
+* `service_freeipa_idpsync_provider`: Required. One of the supported FreeIPA
+  providers.  Only `okta` has been tested.
+* `service_freeipa_idpsync_provider_url`: Required. Base URL for IDP provider
+  OAuth2 endpoint.
+* `service_freeipa_idpsync_clientid`: Required. Client ID for IDP OAuth2
+  provider.
+* `service_freeipa_idpsync_local_users`: List of local users to ignore for
+  syncing purposes.  Defaults to `[ "admin" ]`.
+* `service_freeipa_idpsync_local_groups`: List of local groups to ignore for
+  syncing purposes.  Defaults to
+  `[ "admins", "editors", "ipausers", "trust admins" ]`.
+* `service_freeipa_idpsync_server`: Required. Server for LDAP syncing of
+  users / groups.
+* `service_freeipa_idpsync_use_ssl`: Boolean, whether or not SSL / TLS is
+  required. Defaults to `true`.
+* `service_freeipa_idpsync_binddn`: Required. Bind DN for requesting
+  users/groups.
+* `service_freeipa_idpsync_bindpass`: Required. Bind DN's password for
+  requesting users/groups.
+* `service_freeipa_idpsync_userdn`: Required. User DN base for LDAP.
+* `service_freeipa_idpsync_groupdn`: Required. Group DN base for LDAP.
+* `service_freeipa_idpsync_ignore_users`: List of users to NOT import from
+  upstream IDP.
+* `service_freeipa_idpsync_ignore_groups`: List of groups to ignore from
+  upstream IDP.
+* `service_freeipa_idpsync_attr_username`: LDAP attribute for username, defaults
+  to `uid`.
+* `service_freeipa_idpsync_attr_fullname`: LDAP attribute for full name,
+  defaults to `cn`.
+* `service_freeipa_idpsync_attr_fname`: LDAP attribute for first name, defaults
+  to `givenName`.
+* `service_freeipa_idpsync_attr_lname`: LDAP attribute for last name, defaults
+  to `sn`.
+* `service_freeipa_idpsync_attr_email`: LDAP attribute for email, defaults to
+  `mail`.
+* `service_freeipa_idpsync_attr_shell`: LDAP attribute for login shell, defaults
+  to `loginShell`.
+* `service_freeipa_idpsync_attr_uid`: LDAP attribute for POSIX uid, defaults
+  to `uidNumber`.
+* `service_freeipa_idpsync_attr_active`: LDAP attribute for determining if the
+  user is active. Defaults to `organizationalStatus`.
+* `service_freeipa_idpsync_active_values`: Values for
+  `service_freeipa_idpsync_attr_active` that indicate the user is active.
+  Defaults to `["ACTIVE","PASSWORD_EXPIRED"]`
+* `service_freeipa_idpsync_attr_group_name`: LDAP attribute for group name,
+  defaults to `cn`.
+* `service_freeipa_idpsync_attr_group_desc`: LDAP attribute for group
+  description, defaults to `description`.
+* `service_freeipa_idpsync_attr_group_members`: LDAP attribute for group
+  members, defaults to `uniqueMember`.
+
+
 ## Groups used by this role
 
 * `freeipa_servers`: All servers must be a member of this group.  Servers will
