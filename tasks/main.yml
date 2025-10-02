@@ -110,12 +110,12 @@
   shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0] }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
   when: freeipa_install_replica
 
-- name: Admin Keytab
-  include_tasks: admin-keytab.yml
+- name: Handle account and group creation for internal users
+  include_tasks: accounts.yml
+  run_once: true
 
-- name: "Get kerberos ticket for admin user using admin keytab"
-  shell: kinit -k -t /etc/krb5.admin.keytab admin
-  changed_when: false
+- name: Accounts
+  include_tasks: accounts.yml
 
 - name: "Add replica to ipaservers host group"
   shell: "ipa hostgroup-add-member ipaservers --hosts {{ inventory_hostname }}"

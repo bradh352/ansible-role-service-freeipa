@@ -7,16 +7,18 @@ server={{ inventory_hostname }}
 verify_ssl=False
 
 # Username to use to authenticate
-username=admin
+username=svc_admin
 
 # User keytab file for authentication
-user_keytab=/etc/krb5.admin.keytab
+user_keytab=/etc/krb5.svc_admin.keytab
 
 # Comma delimited list of users to ignore from freeipa
-ignore_users={{ service_freeipa_idpsync_local_users | join(",") }}
+{% set system_users=[ "admin", service_freeipa_enroll_user, "svc_admin" ] %}
+ignore_users={{ (service_freeipa_idpsync_local_users + system_users) | join(",") }}
 
 # Comma delimited list of groups to ignore from freeipa
-ignore_groups={{ service_freeipa_idpsync_local_groups | join(",") }}
+{% set system_groups=[ "admins", "editors", "ipausers", "trust admins", "service_accounts" ] %}
+ignore_groups={{ (service_freeipa_idpsync_local_groups + system_groups) | join(",") }}
 
 # Name configured for external IDP auth that all imported users should be
 # associated with.

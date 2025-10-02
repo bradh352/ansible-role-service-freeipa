@@ -1,0 +1,129 @@
+---
+- name: "Determine nodes which are initialized with Admin keytab"
+  stat:
+    path: /etc/krb5.svc_admin.keytab
+  delegate_to: "{{ item }}"
+  ignore_unreachable: yes
+  ignore_errors: true
+  failed_when: false
+  changed_when: false
+  register: freeipa_nodes_adminkeytab
+  with_items: "{{ groups['freeipa_servers'] }}"
+
+- name: "See if we have the admin keytab installed"
+  stat:
+    path: /etc/krb5.svc_admin.keytab
+  register: freeipa_adminkeytab
+
+- name: "Determine which node to use for copying the admin keytab"
+  set_fact:
+    freeipa_adminkeytab_nodes: >-
+      {%- set eligible_adminkeytab_hosts = [] %}
+      {%- for node in freeipa_nodes_adminkeytab.results %}
+      {%-   if node.stat.exists|default(false) %}
+      {%-     do eligible_adminkeytab_hosts.append(node.item) %}
+      {%-   endif %}
+      {%- endfor %}
+      {{- eligible_adminkeytab_hosts -}}
+
+- name: "Determine admin keytab bootstrap node"
+  set_fact:
+    freeipa_adminkeytab_bootstrap_node: "{{ freeipa_adminkeytab_nodes[0] if freeipa_adminkeytab_nodes | length > 0 else freeipa_primary_node }}"
+
+- name: "svc_admin create"
+  when: not freeipa_adminkeytab.stat.exists and inventory_hostname == freeipa_adminkeytab_bootstrap_node
+  block:
+    - name: "Get kerberos ticket for admin user using password"
+      shell:
+        cmd: kinit admin
+        stdin: "{{ service_freeipa_admin_pass }}"
+        stdin_add_newline: true
+      changed_when: false
+    - name: "Create svc_admin account"
+      shell: |
+        ipa user-add svc_admin --first=svc --last=admin --random --noprivate --password-expiration=29990101000000Z
+        ipa group-add-member --users='svc_admin' admins
+        ipa group-remove-member --users='svc_admin' ipausers
+    - name: "Create svc_admin keytab file"
+      shell: ipa-getkeytab -p svc_admin -k /etc/krb5.svc_admin.keytab
+
+- name: "Fetch the client admin keyring"
+  shell: base64 /etc/krb5.svc_admin.keytab
+  register: freeipa_adminkeytab_data
+  when: inventory_hostname != freeipa_adminkeytab_bootstrap_node and not freeipa_adminkeytab.stat.exists
+  delegate_to: "{{ freeipa_adminkeytab_bootstrap_node }}"
+
+- name: "Install the admin keytab"
+  copy:
+    dest: "/etc/krb5.svc_admin.keytab"
+    content: "{{ freeipa_adminkeytab_data.stdout | b64decode }}"
+    mode: "600"
+    owner: root
+  when: inventory_hostname != freeipa_adminkeytab_bootstrap_node and not freeipa_adminkeytab.stat.exists
+
+- name: "Ensure permissions on admin keytab"
+  file:
+    path: "/etc/krb5.svc_admin.keytab"
+    mode: "600"
+    owner: root
+
+- name: "Get kerberos ticket for svc_admin user using admin keytab"
+  shell: kinit -k -t /etc/krb5.svc_admin.keytab svc_admin
+  changed_when: false
+
+- name: "service_accounts"
+  run_once: true
+  block:
+    - name: "See if the service_accounts group exists"
+      shell: "ips group-show service_accounts"
+      register: serviceaccounts
+      failed_when: false
+      changed_when: false
+    - name: "Create a service_accounts group"
+      shell: "ipa group-add --desc='service accounts' service_accounts"
+      register: serviceaccounts
+      failed_when: false
+      changed_when: false
+
+- name: "ipausers posixgroup"
+  run_once: true
+  block:
+    - name: "See if ipausers is a posix group"
+      shell: "ipa group-show ipausers --all | grep objectclass | grep posixgroup"
+      register: ipausers
+      failed_when: false
+      changed_when: false
+    - name: "Make ipausers a posix group"
+      shell: "ipa group-mod ipausers --posix"
+      when: ipausers.rc != 0
+
+- name: "svc_admin add to service_accounts"
+  run_once: true
+  block:
+    - name: "See if the svc_admin is in service_accounts"
+      shell: "ipa user-show svc_admin | grep 'Member of groups' | grep 'service_accounts'"
+      failed_when: false
+      changed_when: false
+      register: svcadmingroup
+    - name: "Add svc_admin to service_accounts"
+      shell: "ipa group-add-member --users=svc_admin service_accounts"
+      when: svcadmingroup.rc != 0
+
+- name: "enrollment user"
+  run_once: true
+  block:
+    - name: "See if the enrollment user exists"
+      shell: "ipa user-show {{ service_freeipa_enroll_user }}"
+      register: enrollment_user
+      failed_when: false
+      changed_when: false
+    - name: "Create enrollment user"
+      when: enrollment_user.rc != 0
+      ansible.builtin.shell:
+        cmd: |
+          ipa user-add '{{ service_freeipa_enroll_user }}' --first='{{ service_freeipa_enroll_user }}' --last='{{ service_freeipa_enroll_user }}' --password --noprivate --password-expiration=29990101000000Z
+          ipa group-remove-member --users='{{ service_freeipa_enroll_user }}' ipausers
+          ipa group-add-member --users='{{ service_freeipa_enroll_user }}' service_accounts
+          ipa role-add-member "Enrollment Administrator" --users='{{ service_freeipa_enroll_user }}'
+        stdin: "{{ service_freeipa_enroll_pass }}"
+        stdin_add_newline: true

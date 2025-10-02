@@ -17,12 +17,29 @@ is automatically enrolled to the ipa domain.
 
 This has only been tested on RedHat derivatives (specifically Rocky Linux 10).
 
+A few things to note:
+ - Will create a `service_accounts` group
+ - Will create a `svc_admin` account that is in the admins and
+   `service_accounts` groups, but will NOT be in the `ipa_users` group.  No
+   password will be created but a keytab for this authentication will be stored
+   on each FreeIPA server node.
+ - Will create an enrollment user with the provided name and password.  This
+   user will be added to `service_accounts`, but will NOT be in the `ipa_users`
+   group.
+ - For security reasons system logins shouldn't allow members to log into
+   systems that are not part of the `ipa_users` group, for instance, service
+   accounts as listed above.
+
 ## Variables used by this role
 
 * `service_freeipa_admin_pass`: Password for the admin user.
 * `service_freeipa_dm_pass`: Password for the Directory Manager.
 * `service_freeipa_realm`: Realm name to set.  Typically the upper case version
   of the domain.
+* `service_freeipa_enroll_user`: Username for enrollment user.  Recommended to
+  use something like `svc_enroll`.
+* `service_freeipa_enroll_pass`: Password to assign to the enrollment user.
+  Will be used to enroll any systems into the IPA Realm.
 
 ### Variables for syncing from a remote IDP
 * `service_freeipa_idp_proxy`: If a proxy is necessary to connect to the IdP to
