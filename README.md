@@ -25,6 +25,13 @@ This has only been tested on RedHat derivatives (specifically Rocky Linux 10).
   of the domain.
 
 ### Variables for syncing from a remote IDP
+* `service_freeipa_idp_proxy`: If a proxy is necessary to connect to the IdP to
+  receive the device code and perform validation then this should be a URI
+  to the proxy, e.g. `https://proxy.testenv.bradhouse.dev:8080`.  This will
+  be added to `/etc/ipa/default.conf`.
+* `service_freeipa_idp_noproxy`: List of domains to NOT attempt to proxy. A
+  leading `.` is used to act as a wildcard (rather than `*`).
+  E.g. `[ "testenv.bradhouse.dev", ".testenv.bradhouse.dev" ]`
 * `service_freeipa_idpsync_enable`: Boolean.  Whether or not to sync users from
   an idp's ldap server. The remaining `service_freeipa_idpsync_*` configuration
   values should be set when this is enabled.

@@ -161,6 +161,19 @@
     - { "regexp": '^(auth.*\[.*\].*pam_sss.so use_first_pass)', "val": '#\1' }
   when: ansible_os_family == 'Debian'
 
+- name: "Handle proxy related settings"
+  community.general.ini_file:
+    path: "/etc/ipa/default.conf"
+    ignore_spaces: true
+    section: "{{ item.section }}"
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+  with_items:
+    - { "section": "global", "option": "http_proxy",  "value": "{{ service_freeipa_idp_proxy }}" }
+    - { "section": "global", "option": "https_proxy", "value": "{{ service_freeipa_idp_proxy }}" }
+    - { "section": "global", "option": "NO_PROXY",    "value": "{{ service_freeipa_idp_noproxy|default('') }}" }
+  when: service_freeipa_idp_proxy is defined
+
 - name: Re-Query which FreeIPA servers are configured
   shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
   register: ipa_configured_nodes
