@@ -29,6 +29,8 @@ A few things to note:
  - For security reasons system logins shouldn't allow members to log into
    systems that are not part of the `ipa_users` group, for instance, service
    accounts as listed above.
+ - A sudo rule is added called `sudo_allow_admins` which will allow anyone in
+   the `admins` group to sudo on any host.
 
 ## Variables used by this role
 

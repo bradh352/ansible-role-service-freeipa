@@ -1,12 +1,7 @@
 ---
 service_freeipa_idpsync_enable: false
-service_freeipa_idpsync_local_users:
-  - admin
-service_freeipa_idpsync_local_groups:
-  - admins
-  - editors
-  - ipausers
-  - trust admins
+service_freeipa_idpsync_local_users: []
+service_freeipa_idpsync_local_groups: []
 service_freeipa_idpsync_use_ssl: true
 service_freeipa_idpsync_ignore_users:
 service_freeipa_idpsync_ignore_groups:

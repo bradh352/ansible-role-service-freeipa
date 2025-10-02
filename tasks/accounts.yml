@@ -127,3 +127,17 @@
           ipa role-add-member "Enrollment Administrator" --users='{{ service_freeipa_enroll_user }}'
         stdin: "{{ service_freeipa_enroll_pass }}"
         stdin_add_newline: true
+
+- name: "sudo perms"
+  run_once: true
+  block:
+    - name: "See if sudo_allow_admins exits"
+      shell: "ipa sudorule-show sudo_allow_admins"
+      failed_when: false
+      changed_when: false
+      register: sudorule
+    - name: "Add sudo rule"
+      shell: |
+        ipa sudorule-add sudo_allow_admins --hostcat=all --cmdcat=all --runasusercat=all --runasgroupcat=all
+        ipa sudorule-add-user sudo_allow_admins --groups=admins
+      when: sudorule.rc != 0
