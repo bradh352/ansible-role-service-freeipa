@@ -141,3 +141,26 @@
         ipa sudorule-add sudo_allow_admins --hostcat=all --cmdcat=all --runasusercat=all --runasgroupcat=all
         ipa sudorule-add-user sudo_allow_admins --groups=admins
       when: sudorule.rc != 0
+
+- name: "bind user"
+  run_once: true
+  block:
+    - name: "See if bind user has been created"
+      shell: "ldapsearch -b uid={{ service_freeipa_bind_user }},cn=sysaccounts,cn=etc,dc={{ service_freeipa_domain | split('.') | join(',dc=') }}"
+      failed_when: false
+      changed_when: false
+      register: binduser
+    - name: "Create bind user"
+      when: binduser.rc != 0
+      shell:
+        cmd: "ldapmodify"
+        stdin: |
+          dn: uid={{ service_freeipa_bind_user }},cn=sysaccounts,cn=etc,dc={{ service_freeipa_domain | split(".") | join(",dc=") }}
+          changetype: add
+          objectclass: account
+          objectclass: simplesecurityobject
+          uid: {{ service_freeipa_bind_user }}
+          userPassword: {{ service_freeipa_bind_pass }}
+          passwordExpirationTime: 20380119031407Z
+          nsIdleTimeout: 0
+        stdin_add_newline: true

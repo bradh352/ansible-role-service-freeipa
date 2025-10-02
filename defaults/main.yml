@@ -1,4 +1,5 @@
 ---
+service_freeipa_bind_user: "bind"
 service_freeipa_idpsync_enable: false
 service_freeipa_idpsync_local_users: []
 service_freeipa_idpsync_local_groups: []

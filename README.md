@@ -36,8 +36,13 @@ A few things to note:
 
 * `service_freeipa_admin_pass`: Password for the admin user.
 * `service_freeipa_dm_pass`: Password for the Directory Manager.
+* `service_freeipa_domain`: Domain name to set.
 * `service_freeipa_realm`: Realm name to set.  Typically the upper case version
   of the domain.
+* `service_freeipa_bind_user`: Username to create for use with ldap bind
+  operations.  Defaults to `bind` if not specified.  Generates a full bind user
+  name like `uid={{ service_freeipa_bind_user }},cn=sysaccounts,cn=etc,dc={{ service_freeipa_domain | split(".") | join(",dc=") }}`
+* `service_freeipa_bind_pass`: Password to assign for the created bind user.
 * `service_freeipa_enroll_user`: Username for enrollment user.  Recommended to
   use something like `svc_enroll`.
 * `service_freeipa_enroll_pass`: Password to assign to the enrollment user.

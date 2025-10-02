@@ -103,11 +103,11 @@
     freeipa_install_replica: "{{ true if (ipa_configured.rc != 0 and (freeipa_configured_nodes | length > 0 or inventory_hostname != freeipa_primary_node)) else false }}"
 
 - name: "FreeIPA: setup new cluster, first node"
-  shell: ipa-server-install --unattended --no-host-dns --mkhomedir --no-ntp --ssh-trust-dns --ds-password="{{ service_freeipa_dm_pass }}" --admin-password="{{ service_freeipa_admin_pass }}" --realm="{{ service_freeipa_realm }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}"
+  shell: ipa-server-install --unattended --no-host-dns --mkhomedir --no-ntp --ssh-trust-dns --ds-password="{{ service_freeipa_dm_pass }}" --admin-password="{{ service_freeipa_admin_pass }}" --realm="{{ service_freeipa_realm }}" --domain="{{ service_freeipa_domain }}"
   when: freeipa_install_server
 
 - name: "FreeIPA: enroll replica as a client"
-  shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0] }}" --domain="{{ (inventory_hostname | split("."))[1:] | join(".") }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
+  shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0] }}" --domain="{{ service_freeipa_domain }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
   when: freeipa_install_replica
 
 - name: Handle account and group creation for internal users
