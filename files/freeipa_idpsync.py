@@ -512,7 +512,7 @@ def fetch_freeipa(client: ClientMeta, config: configparser.ConfigParser) -> Tupl
     ignore_users = config["freeipa"]["ignore_users"].split(",")
     ignore_groups = config["freeipa"]["ignore_groups"].split(",")
 
-    result = client.user_find()
+    result = client.user_find(o_sizelimit=0)
     users = {}
     for row in result["result"]:
         # the givenname may not exist for some users.  Blank is ok.
