@@ -174,7 +174,7 @@
   with_items:
     - { "section": "global", "option": "http_proxy",  "value": "{{ service_freeipa_idp_proxy }}" }
     - { "section": "global", "option": "https_proxy", "value": "{{ service_freeipa_idp_proxy }}" }
-    - { "section": "global", "option": "NO_PROXY",    "value": "{{ service_freeipa_idp_noproxy|default('') }}" }
+    - { "section": "global", "option": "no_proxy",    "value": "{{ service_freeipa_idp_noproxy|default('')|join(',') }}" }
   when: service_freeipa_idp_proxy is defined
 
 - name: Re-Query which FreeIPA servers are configured

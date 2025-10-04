@@ -481,12 +481,12 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
                 members[member] = None
 
         group = Group(
-            name=fetch_required_string(attr, config["idp:ldap"]["attr_group_name"]),
+            name=fetch_required_string(attr, config["idp:ldap"]["attr_group_name"]).lower(),
             description=fetch_string(attr, config["idp:ldap"].get("attr_group_description")),
             members=members,
         )
 
-        if group.name is None or group.name in ignore_groups or not re.match(r"^[a-zA-Z0-9_]+$", group.name):
+        if group.name is None or group.name in ignore_groups or not re.match(r"^[a-z0-9_]+$", group.name):
             continue
 
         groups[group.name] = group
