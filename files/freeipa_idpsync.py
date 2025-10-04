@@ -2,6 +2,7 @@
 """Script used to sync from an IDP as a source of truth to FreeIPA"""
 
 import configparser
+import re
 import subprocess
 import urllib3
 from dataclasses import dataclass
@@ -166,7 +167,7 @@ def freeipa_user_mod(client: ClientMeta, user: User, dry_run: bool):
         python_freeipa.exceptions.BadRequest
     """
 
-    print(f"   * Updating User {user.username}")
+    print(f"   * Updating User {user.username}", flush=True)
     if dry_run:
         return
 
@@ -200,7 +201,7 @@ def freeipa_user_del(client: ClientMeta, user: User, dry_run: bool):
         python_freeipa.exceptions.BadRequest
     """
 
-    print(f"   * Deleting User {user.username}")
+    print(f"   * Deleting User {user.username}", flush=True)
     if dry_run:
         return
 
@@ -223,7 +224,7 @@ def freeipa_group_add(client: ClientMeta, group: Group, dry_run: bool):
         python_freeipa.exceptions.BadRequest
     """
 
-    print(f"   * Adding Group {group.name}")
+    print(f"   * Adding Group {group.name}", flush=True)
 
     if not dry_run:
         client.group_add(
@@ -234,7 +235,7 @@ def freeipa_group_add(client: ClientMeta, group: Group, dry_run: bool):
     if len(group.members):
         print(f"     * Adding {len(group.members)} members")
         for member in group.members:
-            print(f"       * Adding member {member}")
+            print(f"       * Adding member {member}", flush=True)
             if not dry_run:
                 client.group_add_member(
                     a_cn=group.name,
@@ -260,7 +261,7 @@ def freeipa_group_mod(
         python_freeipa.exceptions.BadRequest
     """
 
-    print(f"   * Updating Group {idpgroup.name}")
+    print(f"   * Updating Group {idpgroup.name}", flush=True)
 
     if not dry_run:
         # Only thing that can change is the description, we will get an error if we try to modify with no changes.
@@ -273,7 +274,7 @@ def freeipa_group_mod(
     if idpgroup.members != freeipagroup.members:
         for member in idpgroup.members:
             if member not in freeipagroup.members:
-                print(f"     * Adding member {member}")
+                print(f"     * Adding member {member}", flush=True)
                 if not dry_run:
                     client.group_add_member(a_cn=idpgroup.name, o_user=member)
         for member in freeipagroup.members:
@@ -282,7 +283,7 @@ def freeipa_group_mod(
                 # deleted users.
                 if member not in idp_users:
                     continue
-                print(f"     * Removing member {member}")
+                print(f"     * Removing member {member}", flush=True)
                 if not dry_run:
                     client.group_remove_member(a_cn=idpgroup.name, o_user=member)
 
@@ -300,7 +301,7 @@ def freeipa_group_del(client: ClientMeta, group: Group, dry_run: bool):
         python_freeipa.exceptions.BadRequest
     """
 
-    print(f"   * Deleting Group {group.name}")
+    print(f"   * Deleting Group {group.name}", flush=True)
     if not dry_run:
         client.group_del(a_cn=group.name)
 
@@ -485,7 +486,7 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
             members=members,
         )
 
-        if group.name is None or group.name in ignore_groups:
+        if group.name is None or group.name in ignore_groups or not re.match(r"^[a-zA-Z0-9_]+$", group.name):
             continue
 
         groups[group.name] = group
