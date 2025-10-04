@@ -86,6 +86,9 @@
   set_fact:
     freeipa_configured_nodes: >-
       {%- set configured_nodes = [] %}
+      {%- if ipa_configured_nodes.results is not defined %}
+      {%-   do ipa_configured_nodes.update({ "results": [ ipa_configured_nodes ] }) %}
+      {%- endif %}
       {%- for node in ipa_configured_nodes.results %}
       {%-   if node.rc|default(1) == 0 %}
       {%-     do configured_nodes.append(node.item) %}
@@ -181,6 +184,7 @@
   with_items: "{{ groups['freeipa_servers']|unique|sort }}"
   run_once: true
   ignore_unreachable: true
+  ignore_errors: true
   failed_when: false
   changed_when: false
 
@@ -188,6 +192,9 @@
   set_fact:
     freeipa_configured_nodes: >-
       {%- set configured_nodes = [] %}
+      {%- if ipa_configured_nodes.results is not defined %}
+      {%-   do ipa_configured_nodes.update({ "results": [ ipa_configured_nodes ] }) %}
+      {%- endif %}
       {%- for node in ipa_configured_nodes.results %}
       {%-   if node.rc|default(1) == 0 %}
       {%-     do configured_nodes.append(node.item) %}

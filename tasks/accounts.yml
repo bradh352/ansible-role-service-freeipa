@@ -19,6 +19,9 @@
   set_fact:
     freeipa_adminkeytab_nodes: >-
       {%- set eligible_adminkeytab_hosts = [] %}
+      {%- if freeipa_nodes_adminkeytab.results is not defined %}
+      {%-   do freeipa_nodes_adminkeytab.update({ "results": [ freeipa_nodes_adminkeytab ] }) %}
+      {%- endif %}
       {%- for node in freeipa_nodes_adminkeytab.results %}
       {%-   if node.stat.exists|default(false) %}
       {%-     do eligible_adminkeytab_hosts.append(node.item) %}
@@ -39,11 +42,19 @@
         stdin: "{{ service_freeipa_admin_pass }}"
         stdin_add_newline: true
       changed_when: false
+    - name: "See if ipausers is a posix group"
+      shell: "ipa group-show ipausers --all | grep objectclass | grep posixgroup"
+      register: ipausers
+      failed_when: false
+      changed_when: false
+    - name: "Make ipausers a posix group"
+      shell: "ipa group-mod ipausers --posix"
+      when: ipausers.rc != 0
     - name: "Create svc_admin account"
       shell: |
-        ipa user-add svc_admin --first=svc --last=admin --random --noprivate --password-expiration=29990101000000Z
-        ipa group-add-member --users='svc_admin' admins
-        ipa group-remove-member --users='svc_admin' ipausers
+        ipa user-add svc_admin --first=svc --last=admin --random --noprivate --password-expiration=29990101000000Z && \
+        ipa group-add-member --users='svc_admin' admins && \
+        ipa group-remove-member --users='svc_admin' ipausers && \
     - name: "Create svc_admin keytab file"
       shell: ipa-getkeytab -p svc_admin -k /etc/krb5.svc_admin.keytab
 
@@ -121,9 +132,9 @@
       when: enrollment_user.rc != 0
       ansible.builtin.shell:
         cmd: |
-          ipa user-add '{{ service_freeipa_enroll_user }}' --first='{{ service_freeipa_enroll_user }}' --last='{{ service_freeipa_enroll_user }}' --password --noprivate --password-expiration=29990101000000Z
-          ipa group-remove-member --users='{{ service_freeipa_enroll_user }}' ipausers
-          ipa group-add-member --users='{{ service_freeipa_enroll_user }}' service_accounts
+          ipa user-add '{{ service_freeipa_enroll_user }}' --first='{{ service_freeipa_enroll_user }}' --last='{{ service_freeipa_enroll_user }}' --password --noprivate --password-expiration=29990101000000Z && \
+          ipa group-remove-member --users='{{ service_freeipa_enroll_user }}' ipausers && \
+          ipa group-add-member --users='{{ service_freeipa_enroll_user }}' service_accounts && \
           ipa role-add-member "Enrollment Administrator" --users='{{ service_freeipa_enroll_user }}'
         stdin: "{{ service_freeipa_enroll_pass }}"
         stdin_add_newline: true
@@ -138,7 +149,7 @@
       register: sudorule
     - name: "Add sudo rule"
       shell: |
-        ipa sudorule-add sudo_allow_admins --hostcat=all --cmdcat=all --runasusercat=all --runasgroupcat=all
+        ipa sudorule-add sudo_allow_admins --hostcat=all --cmdcat=all --runasusercat=all --runasgroupcat=all && \
         ipa sudorule-add-user sudo_allow_admins --groups=admins
       when: sudorule.rc != 0
 
