@@ -54,7 +54,7 @@
       shell: |
         ipa user-add svc_admin --first=svc --last=admin --random --noprivate --password-expiration=29990101000000Z && \
         ipa group-add-member --users='svc_admin' admins && \
-        ipa group-remove-member --users='svc_admin' ipausers && \
+        ipa group-remove-member --users='svc_admin' ipausers
     - name: "Create svc_admin keytab file"
       shell: ipa-getkeytab -p svc_admin -k /etc/krb5.svc_admin.keytab
 
