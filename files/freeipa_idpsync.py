@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 
 import click
 import ldap3
-from python_freeipa import ClientMeta
+from ipalib import api, errors, __version__ as IPA_VERSION
 
 urllib3.disable_warnings()
 
@@ -49,33 +49,37 @@ class Group:
     help="Configuration Path.",
 )
 @click.option(
-    "--freeipa-password",
-    hide_input=True,
-    help="FreeIPA password. If not passed will attempt to use the configured keytab.",
-)
-@click.option(
     "--dry-run",
     is_flag=True,
     help="Output what would be done",
 )
-def sync(config_path: str, dry_run: bool, freeipa_password: Optional[str]):
+def sync(config_path: str, dry_run: bool):
     """Sync users and groups from IDP to FreeIPA"""
     config = configparser.ConfigParser()
     config.read(config_path)
 
-    if freeipa_password is None:
-        if config["freeipa"].get("user_keytab") == None or len(config["freeipa"]["user_keytab"]) == 0:
-            print("No user keytab in configurabion")
-            sys.exit(1)
-        subprocess.run(["kinit","-k", "-t", config["freeipa"]["user_keytab"], config["freeipa"]["username"]])
+    if config["freeipa"].get("user_keytab") == None or len(config["freeipa"]["user_keytab"]) == 0:
+        print("No user keytab in configurabion")
+        sys.exit(1)
 
-    client = ClientMeta(config["freeipa"]["server"], verify_ssl=strtobool(config["freeipa"]["verify_ssl"]))
-    if freeipa_password is None:
-        client.login_kerberos()
-    else:
-        client.login(config["freeipa"]["username"], freeipa_password)
-
+    # Fetch before authenticating to FreeIPA as it messes with the LDAP settings.
     idp_users, idp_groups = fetch_ldap(config)
+
+    subprocess.run(["kinit","-k", "-t", config["freeipa"]["user_keytab"], config["freeipa"]["username"]])
+
+    api.bootstrap(context='cli')
+
+    if 'server' not in api.env or 'domain' not in api.env:
+        sys.exit("ERROR: ('jsonrpc_uri' or 'xmlrpc_uri') or 'domain' are not "
+                 "defined in '[global]' section of '%s' nor in '%s'." %
+                 (api.env.conf, api.env.conf_default))
+
+    api.finalize()
+
+    api.Backend.rpcclient.connect()
+
+    client = api
+
     freeipa_users, freeipa_groups = fetch_freeipa(client, config)
 
     if dry_run:
@@ -120,7 +124,7 @@ def sync(config_path: str, dry_run: bool, freeipa_password: Optional[str]):
     print("Sync Complete")
 
 
-def freeipa_user_add(client: ClientMeta, user: User, dry_run: bool):
+def freeipa_user_add(client, user: User, dry_run: bool):
     """
     Add a user into FreeIPA
 
@@ -137,24 +141,31 @@ def freeipa_user_add(client: ClientMeta, user: User, dry_run: bool):
     if dry_run:
         return
 
-    client.user_add(
-        a_uid=user.username,
-        o_givenname=user.fname,
-        o_sn=user.lname,
-        o_cn=user.name,
-        o_gecos=user.name,
-        o_mail=user.email,
-        o_ipauserauthtype=user.auth_type,
-        o_ipaidpconfiglink=user.idp_name,
-        o_ipaidpsub=user.idp_username,
-        o_uidnumber=user.uid,
-        o_gidnumber=user.uid,
-        o_loginshell=user.shell,
-        o_nsaccountlock=False if user.active else True,
-    )
+    if not user.active:
+        print(f"     * Skipping due to user being disabled")
+
+    args = [ user.username ]
+    kw = {
+        "givenname": user.fname,
+        "sn": user.lname,
+        "cn": user.name,
+        "gecos": user.name,
+        "mail": user.email,
+        "ipauserauthtype": user.auth_type,
+        "ipaidpconfiglink": user.idp_name,
+        "ipaidpsub":user.idp_username,
+    }
+    if user.uid:
+        kw["uidnumber"] = user.uid
+        kw["gidnumber"] = user.gid
+
+    if user.shell:
+        kw["loginshell"] = user.shell
+
+    client.Command.user_add(*args, **kw)
 
 
-def freeipa_user_mod(client: ClientMeta, user: User, dry_run: bool):
+def freeipa_user_mod(client, user: User, dry_run: bool):
     """
     Modify existing FreeIPA user.  At least one data element must differ or an exception will be thrown.
 
@@ -171,24 +182,29 @@ def freeipa_user_mod(client: ClientMeta, user: User, dry_run: bool):
     if dry_run:
         return
 
-    client.user_mod(
-        a_uid=user.username,
-        o_givenname=user.fname,
-        o_sn=user.lname,
-        o_cn=user.name,
-        o_gecos=user.name,
-        o_mail=user.email,
-        o_ipauserauthtype=user.auth_type,
-        o_ipaidpconfiglink=user.idp_name,
-        o_ipaidpsub=user.idp_username,
-        o_uidnumber=user.uid,
-        o_gidnumber=user.uid,
-        o_loginshell=user.shell,
-        o_nsaccountlock=False if user.active else True,
-    )
+    args = [ user.username ]
+    kw = {
+        "givenname": user.fname,
+        "sn": user.lname,
+        "cn": user.name,
+        "gecos": user.name,
+        "mail": user.email,
+        "ipauserauthtype": user.auth_type,
+        "ipaidpconfiglink": user.idp_name,
+        "ipaidpsub": user.idp_username,
+        "nsaccountlock": False if user.active else True,
+    }
+    if user.uid:
+        kw["uidnumber"] = user.uid
+        kw["gidnumber"] = user.gid
+
+    if user.shell:
+        kw["loginshell"] = user.shell
+
+    client.Command.user_mod(*args, *kw)
 
 
-def freeipa_user_del(client: ClientMeta, user: User, dry_run: bool):
+def freeipa_user_del(client, user: User, dry_run: bool):
     """
     Delete existing FreeIPA user.
 
@@ -205,13 +221,13 @@ def freeipa_user_del(client: ClientMeta, user: User, dry_run: bool):
     if dry_run:
         return
 
-    client.user_del(
-        a_uid=user.username,
-        o_preserve=False,
+    client.Command.user_del(
+        user.username,
+        preserve=False,
     )
 
 
-def freeipa_group_add(client: ClientMeta, group: Group, dry_run: bool):
+def freeipa_group_add(client, group: Group, dry_run: bool):
     """
     Add FreeIPA group and members to group
 
@@ -227,9 +243,9 @@ def freeipa_group_add(client: ClientMeta, group: Group, dry_run: bool):
     print(f"   * Adding Group {group.name}", flush=True)
 
     if not dry_run:
-        client.group_add(
-            a_cn=group.name,
-            o_description=group.description,
+        client.Command.group_add(
+            group.name,
+            description=group.description,
         )
 
     if len(group.members):
@@ -237,14 +253,14 @@ def freeipa_group_add(client: ClientMeta, group: Group, dry_run: bool):
         for member in group.members:
             print(f"       * Adding member {member}", flush=True)
             if not dry_run:
-                client.group_add_member(
-                    a_cn=group.name,
-                    o_user=member,
+                client.Command.group_add_member(
+                    group.name,
+                    user=member,
                 )
 
 
 def freeipa_group_mod(
-    client: ClientMeta, idpgroup: Group, freeipagroup: Group, idp_users: Dict[str, User], dry_run: bool
+    client, idpgroup: Group, freeipagroup: Group, idp_users: Dict[str, User], dry_run: bool
 ):
     """
     Add FreeIPA group to modify.  Will also update group membership
@@ -266,9 +282,9 @@ def freeipa_group_mod(
     if not dry_run:
         # Only thing that can change is the description, we will get an error if we try to modify with no changes.
         if idpgroup.description != freeipagroup.description:
-            client.group_mod(
-                a_cn=idpgroup.name,
-                o_description=idpgroup.description,
+            client.Command.group_mod(
+                idpgroup.name,
+                description=idpgroup.description,
             )
 
     if idpgroup.members != freeipagroup.members:
@@ -276,7 +292,7 @@ def freeipa_group_mod(
             if member not in freeipagroup.members:
                 print(f"     * Adding member {member}", flush=True)
                 if not dry_run:
-                    client.group_add_member(a_cn=idpgroup.name, o_user=member)
+                    client.Command.group_add_member(idpgroup.name, user=member)
         for member in freeipagroup.members:
             if member not in idpgroup.members:
                 # On user deletion, we've pre-cached group membership, but it will be auto-removed so skip
@@ -285,10 +301,10 @@ def freeipa_group_mod(
                     continue
                 print(f"     * Removing member {member}", flush=True)
                 if not dry_run:
-                    client.group_remove_member(a_cn=idpgroup.name, o_user=member)
+                    client.Command.group_remove_member(idpgroup.name, user=member)
 
 
-def freeipa_group_del(client: ClientMeta, group: Group, dry_run: bool):
+def freeipa_group_del(client, group: Group, dry_run: bool):
     """
     Add FreeIPA group to delete.
 
@@ -303,7 +319,7 @@ def freeipa_group_del(client: ClientMeta, group: Group, dry_run: bool):
 
     print(f"   * Deleting Group {group.name}", flush=True)
     if not dry_run:
-        client.group_del(a_cn=group.name)
+        client.Command.group_del(group.name)
 
 
 def fetch_string(values: Dict, name: Optional[str]) -> Optional[str]:
@@ -327,7 +343,7 @@ def fetch_string(values: Dict, name: Optional[str]) -> Optional[str]:
     if not val:
         return None
 
-    if isinstance(val, list):
+    if isinstance(val, list) or isinstance(val, tuple):
         val = val[0]
 
     if isinstance(val, bytes):
@@ -493,7 +509,7 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
     return users, groups
 
 
-def fetch_freeipa(client: ClientMeta, config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict[str, Group]]:
+def fetch_freeipa(client, config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict[str, Group]]:
     """
     Fetch users and groups from FreeIPA
 
@@ -512,7 +528,7 @@ def fetch_freeipa(client: ClientMeta, config: configparser.ConfigParser) -> Tupl
     ignore_users = config["freeipa"]["ignore_users"].split(",")
     ignore_groups = config["freeipa"]["ignore_groups"].split(",")
 
-    result = client.user_find(o_sizelimit=0)
+    result = client.Command.user_find(all=True, sizelimit=0)
     users = {}
     for row in result["result"]:
         # the givenname may not exist for some users.  Blank is ok.
@@ -556,7 +572,7 @@ def fetch_freeipa(client: ClientMeta, config: configparser.ConfigParser) -> Tupl
 
         users[user.username] = user
 
-    result = client.group_find()
+    result = client.Command.group_find(all=True)
     groups = {}
     for row in result["result"]:
         members = {}
