@@ -110,7 +110,7 @@
   when: freeipa_install_server
 
 - name: "FreeIPA: enroll replica as a client"
-  shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0] }}" --domain="{{ service_freeipa_domain }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
+  shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0]|default(freeipa_primary_node) }}" --domain="{{ service_freeipa_domain }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
   when: freeipa_install_replica
 
 - name: Handle account and group creation for internal users

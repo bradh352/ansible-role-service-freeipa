@@ -1,10 +1,8 @@
 # Free IPA Configuration
 [freeipa]
-# Server to use
-server={{ inventory_hostname }}
 
-# Whether to validate the server's TLS certificate
-verify_ssl=False
+# This can only be run on an enrolled FreeIPA client or server as it depends on
+# FreeIPA configuration files to determine server paths.
 
 # Username to use to authenticate
 username=svc_admin

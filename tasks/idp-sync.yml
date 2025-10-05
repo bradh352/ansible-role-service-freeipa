@@ -6,6 +6,7 @@
       - "python3-click"
       - "python3-pip"
       - "python3-requests-gssapi"
+      - "python3-ipalib"
     state: present
   when: ansible_os_family == 'Debian'
 
@@ -16,13 +17,9 @@
       - "python3-click"
       - "python3-pip"
       - "python3-requests-gssapi"
+      - "python3-ipalib"
     state: present
   when: ansible_os_family == 'RedHat'
-
-- name: Install freeipa python module
-  ansible.builtin.pip:
-    name: python_freeipa
-    state: present
 
 - name: Copy IDP sync script
   copy:
@@ -38,15 +35,27 @@
     mode: 0600
     owner: root
 
-- name: See if IDP provider is already configured
-  shell: ipa idp-show "{{ service_freeipa_idpsync_idp_name }}"
-  register: idp_configured
-  changed_when: false
-  failed_when: false
+- name: IDP Provider
+  run_once: true
+  block:
+  - name: See if IDP provider is already configured
+    shell: ipa idp-show "{{ service_freeipa_idpsync_idp_name }}"
+    register: idp_configured
+    changed_when: false
+    failed_when: false
+  - name: Configure IDP provider
+    shell: ipa idp-add {{ service_freeipa_idpsync_idp_name }} --provider={{ service_freeipa_idpsync_provider }} --base-url={{ service_freeipa_idpsync_provider_domain }} --client-id={{ service_freeipa_idpsync_clientid }}
+    when: idp_configured.rc != 0
 
-- name: Configure IDP provider
-  shell: ipa idp-add {{ service_freeipa_idpsync_idp_name }} --provider={{ service_freeipa_idpsync_provider }} --base-url={{ service_freeipa_idpsync_provider_domain }} --client-id={{ service_freeipa_idpsync_clientid }}
-  when: idp_configured.rc != 0
+# Figured out via
+# sesearch --allow -s ipa_otpd_t | grep port
+- name: Set proxy port number as an http port to allow ipa_otpd_t to connect
+  community.general.seport:
+    ports: "{{ service_freeipa_idp_proxy | regex_search(':(\\d+)', '\\1') | first }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  when: ansible_os_family == 'RedHat' and service_freeipa_idp_proxy is defined
 
 - name: "LDAPSYNC: Add cron task"
   template:
