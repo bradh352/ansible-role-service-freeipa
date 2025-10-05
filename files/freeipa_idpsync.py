@@ -113,7 +113,7 @@ def sync(config_path: str, dry_run: bool):
     if len(updated_users):
         print(f"  * Updating {len(updated_users)} users")
         for user in updated_users:
-            freeipa_user_mod(client, user, dry_run)
+            freeipa_user_mod(client, user, freeipa_users[user.name], dry_run)
 
     updated_groups = modified_groups(idp_groups, freeipa_groups)
     if len(updated_groups):
@@ -157,7 +157,7 @@ def freeipa_user_add(client, user: User, dry_run: bool):
     }
     if user.uid:
         kw["uidnumber"] = user.uid
-        kw["gidnumber"] = user.gid
+        kw["gidnumber"] = user.uid
 
     if user.shell:
         kw["loginshell"] = user.shell
@@ -179,36 +179,36 @@ def freeipa_user_mod(client, idp_user: User, freeipa_user: User, dry_run: bool):
         python_freeipa.exceptions.BadRequest
     """
 
-    print(f"   * Updating User {user.username}", flush=True)
+    print(f"   * Updating User {idp_user.username}", flush=True)
     if dry_run:
         return
 
     if not user_match_base(idp_user, freeipa_user):
-        args = [ user.username ]
+        args = [ idp_user.username ]
         kw = {
-            "givenname": user.fname,
-            "sn": user.lname,
-            "cn": user.name,
-            "gecos": user.name,
-            "mail": user.email,
-            "ipauserauthtype": user.auth_type,
-            "ipaidpconfiglink": user.idp_name,
-            "ipaidpsub": user.idp_username,
+            "givenname": idp_user.fname,
+            "sn": idp_user.lname,
+            "cn": idp_user.name,
+            "gecos": idp_user.name,
+            "mail": idp_user.email,
+            "ipauserauthtype": idp_user.auth_type,
+            "ipaidpconfiglink": idp_user.idp_name,
+            "ipaidpsub": idp_user.idp_username,
         }
-        if user.uid:
-            kw["uidnumber"] = user.uid
-            kw["gidnumber"] = user.gid
+        if idp_user.uid:
+            kw["uidnumber"] = idp_user.uid
+            kw["gidnumber"] = idp_user.uid
 
-        if user.shell:
-            kw["loginshell"] = user.shell
+        if idp_user.shell:
+            kw["loginshell"] = idp_user.shell
 
         client.Command.user_mod(*args, **kw)
 
     if idp_user.active != freeipa_user.active:
         if idp_user.active:
-            client.Command.user_enable(user.username)
+            client.Command.user_enable(idp_user.username)
         else:
-            client.Command.user_disable(user.username)
+            client.Command.user_disable(idp_user.username)
 
 
 def freeipa_user_del(client, user: User, dry_run: bool):
@@ -681,7 +681,7 @@ def user_match(idp_user: User, freeipa_user: User) -> bool:
         match [bool]: Whether or not user data matches
     """
 
-    if not user_match_base(idp_user, freeipa_user)
+    if not user_match_base(idp_user, freeipa_user):
         return False
 
     if idp_user.active != freeipa_user.active:
