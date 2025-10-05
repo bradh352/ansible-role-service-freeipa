@@ -165,13 +165,14 @@ def freeipa_user_add(client, user: User, dry_run: bool):
     client.Command.user_add(*args, **kw)
 
 
-def freeipa_user_mod(client, user: User, dry_run: bool):
+def freeipa_user_mod(client, idp_user: User, freeipa_user: User, dry_run: bool):
     """
     Modify existing FreeIPA user.  At least one data element must differ or an exception will be thrown.
 
     Parameters:
         client [ClientMeta]: Connected and logged in FreeIPA session
-        user [User]: User attributes to modify
+        idp_user [User]: User attributes to sync from IdP
+        freeipa_user [User]: Current user attributes
         dry_run [bool]: If true, only print what would occur.
 
     Exceptions:
@@ -182,26 +183,32 @@ def freeipa_user_mod(client, user: User, dry_run: bool):
     if dry_run:
         return
 
-    args = [ user.username ]
-    kw = {
-        "givenname": user.fname,
-        "sn": user.lname,
-        "cn": user.name,
-        "gecos": user.name,
-        "mail": user.email,
-        "ipauserauthtype": user.auth_type,
-        "ipaidpconfiglink": user.idp_name,
-        "ipaidpsub": user.idp_username,
-        "nsaccountlock": False if user.active else True,
-    }
-    if user.uid:
-        kw["uidnumber"] = user.uid
-        kw["gidnumber"] = user.gid
+    if not user_match_base(idp_user, freeipa_user):
+        args = [ user.username ]
+        kw = {
+            "givenname": user.fname,
+            "sn": user.lname,
+            "cn": user.name,
+            "gecos": user.name,
+            "mail": user.email,
+            "ipauserauthtype": user.auth_type,
+            "ipaidpconfiglink": user.idp_name,
+            "ipaidpsub": user.idp_username,
+        }
+        if user.uid:
+            kw["uidnumber"] = user.uid
+            kw["gidnumber"] = user.gid
 
-    if user.shell:
-        kw["loginshell"] = user.shell
+        if user.shell:
+            kw["loginshell"] = user.shell
 
-    client.Command.user_mod(*args, *kw)
+        client.Command.user_mod(*args, **kw)
+
+    if idp_user.active != freeipa_user.active:
+        if idp_user.active:
+            client.Command.user_enable(user.username)
+        else:
+            client.Command.user_disable(user.username)
 
 
 def freeipa_user_del(client, user: User, dry_run: bool):
@@ -625,10 +632,12 @@ def groups_not_in(list1: Dict[str, Group], list2: Dict[str, Group]) -> List[Grou
     return [group for group in list1.values() if group.name not in list2]
 
 
-def user_match(idp_user: User, freeipa_user: User) -> bool:
+def user_match_base(idp_user: User, freeipa_user: User) -> bool:
     """
     Determine if the 2 users are identical.  If email, uid, or shell are not
-    available in the IDP, will not check for match on those attributes.
+    available in the IDP, will not check for match on those attributes.  This
+    also specifically does not check the user active attribute as that uses
+    different commands to toggle.
 
     Parameters:
         idp_user [User]: IDP user
@@ -646,8 +655,6 @@ def user_match(idp_user: User, freeipa_user: User) -> bool:
         return False
     if idp_user.email is not None and idp_user.email != freeipa_user.email:
         return False
-    if idp_user.active != freeipa_user.active:
-        return False
     if idp_user.auth_type != freeipa_user.auth_type:
         return False
     if idp_user.idp_name != freeipa_user.idp_name:
@@ -658,6 +665,28 @@ def user_match(idp_user: User, freeipa_user: User) -> bool:
         return False
     if idp_user.shell is not None and idp_user.shell != freeipa_user.shell:
         return False
+    return True
+
+
+def user_match(idp_user: User, freeipa_user: User) -> bool:
+    """
+    Determine if the 2 users are identical.  If email, uid, or shell are not
+    available in the IDP, will not check for match on those attributes.
+
+    Parameters:
+        idp_user [User]: IDP user
+        freeipa_user [User]: FreeIPA user
+
+    Returns:
+        match [bool]: Whether or not user data matches
+    """
+
+    if not user_match_base(idp_user, freeipa_user)
+        return False
+
+    if idp_user.active != freeipa_user.active:
+        return False
+
     return True
 
 

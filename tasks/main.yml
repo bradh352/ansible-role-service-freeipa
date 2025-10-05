@@ -177,6 +177,26 @@
     - { "section": "global", "option": "no_proxy",    "value": "{{ service_freeipa_idp_noproxy|default('')|join(',') }}" }
   when: service_freeipa_idp_proxy is defined
 
+- name: "Make sure sssd enumerate is enabled and sudo can use kerberos"
+  community.general.ini_file:
+    path: /etc/sssd/sssd.conf
+    section: "domain/{{ service_freeipa_domain }}"
+    option: "{{ item.key }}"
+    value: "{{ item.value }}"
+  with_items:
+    - { "key": "enumerate",           "value": "True" }
+    - { "key": "pam_gssapi_services", "value": "sudo, sudo-i" }
+  notify: restart_sssd
+
+- name: "sudo allow gssapi auth"
+  lineinfile:
+    path: "/etc/pam.d/{{ item }}"
+    line: "auth sufficient pam_sss_gss.so"
+    insertbefore: "^auth.*system-auth.*"
+  with_items:
+    - "sudo"
+    - "sudo-i"
+
 - name: Re-Query which FreeIPA servers are configured
   shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
   register: ipa_configured_nodes
