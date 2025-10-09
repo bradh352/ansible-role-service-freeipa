@@ -192,7 +192,7 @@
   lineinfile:
     path: "/etc/pam.d/{{ item }}"
     line: "auth sufficient pam_sss_gss.so"
-    insertbefore: "^auth.*system-auth.*"
+    insertbefore: "{{ '^auth.*system-auth.*' if ansible_os_family == 'RedHat' else '@include common-auth' }}"
   with_items:
     - "sudo"
     - "sudo-i"
