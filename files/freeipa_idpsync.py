@@ -440,6 +440,9 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
     rename_groups_data = config["idp:ldap"]["rename_groups"].split(",")
     rename_groups = {}
     for group in rename_groups_data:
+        group = group.strip()
+        if len(group) == 0:
+            continue
         data = group.split("=")
         rename_groups[data[0]] = data[1]
 
