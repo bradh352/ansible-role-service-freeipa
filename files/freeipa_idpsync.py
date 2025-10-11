@@ -436,6 +436,12 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
     ignore_groups = config["idp:ldap"]["ignore_groups"].split(",")
     active_values = config["idp:ldap"]["attr_active_values"].split(",")
 
+    rename_groups_data = config["idp:ldap"]["rename_groups"].split(",")
+    rename_groups = {}
+    for group in rename_groups_data:
+        data = group.split("=")
+        rename_groups[data[0]] = data[1]
+
     if conn.response is None:
         raise Exception("user search failed")
 
@@ -503,8 +509,13 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
 
                 members[member] = None
 
+        group_name = fetch_required_string(attr, config["idp:ldap"]["attr_group_name"])
+
+        if group_name in rename_groups:
+            group_name = rename_groups[group_name]
+
         group = Group(
-            name=fetch_required_string(attr, config["idp:ldap"]["attr_group_name"]).lower(),
+            name=group_name.lower(),
             description=fetch_string(attr, config["idp:ldap"].get("attr_group_description")),
             members=members,
         )

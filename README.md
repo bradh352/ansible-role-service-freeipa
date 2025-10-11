@@ -86,6 +86,9 @@ A few things to note:
   upstream IDP.
 * `service_freeipa_idpsync_ignore_groups`: List of groups to ignore from
   upstream IDP.
+* `service_freeipa_idpsync_rename_groups`: The upstream IdP groups may contain
+  spaces or other characters not allowed in group names.  This is a dictionary
+  of IdP group names to the freeipa mapping that is desired.
 * `service_freeipa_idpsync_attr_username`: LDAP attribute for username, defaults
   to `uid`.
 * `service_freeipa_idpsync_attr_fullname`: LDAP attribute for full name,
