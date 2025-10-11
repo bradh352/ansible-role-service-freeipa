@@ -114,7 +114,7 @@ def sync(config_path: str, dry_run: bool):
     if len(updated_users):
         print(f"  * Updating {len(updated_users)} users")
         for user in updated_users:
-            freeipa_user_mod(client, user, freeipa_users[user.name], dry_run)
+            freeipa_user_mod(client, user, freeipa_users[user.username], dry_run)
 
     updated_groups = modified_groups(idp_groups, freeipa_groups)
     if len(updated_groups):
