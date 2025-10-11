@@ -57,7 +57,7 @@ ignore_groups={{ service_freeipa_idpsync_ignore_groups | join(",") }}
 
 # Comma delimited list of key/value pairs for groups to rename.
 # E.g. rename_groups=Software Engineers=sweng,IT Admins=infra
-{% rename_groups=[] %}
+{% set rename_groups=[] %}
 {% for key, val in service_freeipa_idpsync_rename_groups.items() %}
 {%   do rename_groups.append(key ~ "=" ~ val) %}
 {% endfor %}
