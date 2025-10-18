@@ -98,3 +98,8 @@ attr_group_description={{ service_freeipa_idpsync_attr_group_desc }}
 
 # Group: Attribute for group members
 attr_group_members={{ service_freeipa_idpsync_attr_group_members }}
+
+# If SSH public keys are hosted at a specific url, provide that url pattern
+# here.  The url pattern must take the username as a single argument using the
+# standard python format style placeholder.  E.g. `https://github.com/{}-org.keys`
+sshpubkey_url_pattern={{ service_freeipa_idpsync_sshpubkey_url_pattern }}

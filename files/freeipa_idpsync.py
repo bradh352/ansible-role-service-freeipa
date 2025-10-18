@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 
 import click
 import ldap3
+import requests
 from ipalib import api, errors, __version__ as IPA_VERSION
 
 urllib3.disable_warnings()
@@ -31,6 +32,7 @@ class User:
     auth_type: str
     idp_name: str
     idp_username: str
+    ssh_pubkey: Optional[str]
 
 
 @dataclass
@@ -163,6 +165,9 @@ def freeipa_user_add(client, user: User, dry_run: bool):
     if user.shell:
         kw["loginshell"] = user.shell
 
+    if user.ssh_pubkey:
+        kw["ipasshpubkey"] = user.ssh_pubkey
+
     client.Command.user_add(*args, **kw)
 
 
@@ -202,6 +207,9 @@ def freeipa_user_mod(client, idp_user: User, freeipa_user: User, dry_run: bool):
 
         if idp_user.shell:
             kw["loginshell"] = idp_user.shell
+
+        if idp_user.ssh_pubkey:
+            kw["ipasshpubkey"] = idp_user.ssh_pubkey
 
         client.Command.user_mod(*args, **kw)
 
@@ -409,6 +417,25 @@ def strtobool(val: str) -> bool:
     return False
 
 
+def fetch_sshpubkey(username: str, url_pattern: Optional[str]) -> Optional[str]:
+    if url_pattern is None or len(url_pattern) == 0:
+        return None
+
+    try:
+        response = requests.get(url_pattern.format(username))
+    except:
+        return None
+
+    if response.status_code != 200:
+        return None
+
+    pubkey = response.text.strip()
+    if len(pubkey) == 0:
+        return None
+
+    return pubkey
+
+
 def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict[str, Group]]:
     """
     Retrieve all users an groups from LDAP server
@@ -460,6 +487,8 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
         # Usernames in the form of an email address must remove the suffix.
         username = idp_username.split("@")[0]
 
+        ssh_pubkey = fetch_sshpubkey(username, config["idp:ldap"].get("sshpubkey_url_pattern"))
+
         user = User(
             username=username,
             fname=fetch_required_string(attr, config["idp:ldap"]["attr_fname"]),
@@ -472,6 +501,7 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
             idp_username=idp_username,
             shell=fetch_string(attr, config["idp:ldap"].get("attr_shell")),
             active=True if fetch_required_string(attr, config["idp:ldap"]["attr_active"]) in active_values else False,
+            ssh_pubkey=ssh_pubkey
         )
 
         if user.username in users:
@@ -575,6 +605,9 @@ def fetch_freeipa(client, config: configparser.ConfigParser) -> Tuple[Dict[str, 
         if idp_username is None:
             idp_username = ""
 
+        if idp_username in ignore_users:
+            continue
+
         user = User(
             username=fetch_required_string(row, "uid"),
             fname=fname,
@@ -587,10 +620,8 @@ def fetch_freeipa(client, config: configparser.ConfigParser) -> Tuple[Dict[str, 
             idp_username=idp_username,
             shell=fetch_string(row, "loginshell"),
             active=False if row["nsaccountlock"] else True,
+            ssh_pubkey=fetch_string(row, "ipasshpubkey"),
         )
-
-        if user.username in ignore_users:
-            continue
 
         users[user.username] = user
 
@@ -679,6 +710,8 @@ def user_match_base(idp_user: User, freeipa_user: User) -> bool:
     if idp_user.uid is not None and idp_user.uid != freeipa_user.uid:
         return False
     if idp_user.shell is not None and idp_user.shell != freeipa_user.shell:
+        return False
+    if idp_user.ssh_pubkey is not None and idp_user.ssh_pubkey != freeipa_user.ssh_pubkey:
         return False
     return True
 

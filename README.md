@@ -114,6 +114,10 @@ A few things to note:
   description, defaults to `description`.
 * `service_freeipa_idpsync_attr_group_members`: LDAP attribute for group
   members, defaults to `uniqueMember`.
+* `service_freeipa_idpsync_sshpubkey_url_pattern`: If SSH public keys are hosted
+  at a specific url, provide that url pattern here.  The url pattern must take
+  the username as a single argument using the standard python format style
+  placeholder.  E.g. `https://github.com/{}-org.keys`
 
 
 ## Groups used by this role
