@@ -32,7 +32,7 @@ class User:
     auth_type: str
     idp_name: str
     idp_username: str
-    ssh_pubkey: Optional[str]
+    ssh_pubkey: Optional[List[str]]
 
 
 @dataclass
@@ -371,6 +371,42 @@ def fetch_string(values: Dict, name: Optional[str]) -> Optional[str]:
     return val
 
 
+def fetch_string_list(values: Dict, name: Optional[str]) -> Optional[List[str]]:
+    """
+    Fetch a list of strings from a dictionary.  If the value of a list entry is
+    byte array, will convert it to utf-8.
+
+    Parameters:
+        values [Dict]: Dictionary to query for string
+        name [str]: Name to search in dictionary
+
+    Returns:
+        List of strings value if found otherwise None
+    """
+
+    if name is None or len(name) == 0:
+        return None
+
+    val = values.get(name)
+    if not val:
+        return None
+
+    vallist = []
+
+    if not isinstance(val, list) and not isinstance(val, tuple):
+        val = [ val ]
+
+    for item in val:
+        if isinstance(item, bytes):
+            item = item.decode("utf-8")
+        if not isinstance(item, str):
+            item = str(item)
+        if len(item) == 0:
+            continue
+        vallist.append(item)
+
+    return vallist
+
 def fetch_required_string(values: dict, name: str) -> str:
     """
     Fetch a string value from a dictionary.  If the value located is a list,
@@ -417,7 +453,7 @@ def strtobool(val: str) -> bool:
     return False
 
 
-def fetch_sshpubkey(username: str, url_pattern: Optional[str], proxy: Optional[str]) -> Optional[str]:
+def fetch_sshpubkey(username: str, url_pattern: Optional[str], proxy: Optional[str]) -> Optional[List[str]]:
     if url_pattern is None or len(url_pattern) == 0:
         return None
 
@@ -434,6 +470,14 @@ def fetch_sshpubkey(username: str, url_pattern: Optional[str], proxy: Optional[s
         return None
 
     pubkey = response.text.strip()
+    if len(pubkey) == 0:
+        return None
+
+    pubkey = pubkey.splitlines()
+
+    # Remove empty entries
+    pubkey = [item for item in pubkey if item]
+
     if len(pubkey) == 0:
         return None
 
@@ -613,11 +657,13 @@ def fetch_freeipa(client, config: configparser.ConfigParser) -> Tuple[Dict[str, 
         if idp_username is None:
             idp_username = ""
 
-        if idp_username in ignore_users:
+        username = fetch_required_string(row, "uid")
+
+        if username in ignore_users:
             continue
 
         user = User(
-            username=fetch_required_string(row, "uid"),
+            username=username,
             fname=fname,
             lname=fetch_required_string(row, "sn"),
             name=fetch_required_string(row, "cn"),
@@ -628,7 +674,7 @@ def fetch_freeipa(client, config: configparser.ConfigParser) -> Tuple[Dict[str, 
             idp_username=idp_username,
             shell=fetch_string(row, "loginshell"),
             active=False if row["nsaccountlock"] else True,
-            ssh_pubkey=fetch_string(row, "ipasshpubkey"),
+            ssh_pubkey=fetch_string_list(row, "ipasshpubkey"),
         )
 
         users[user.username] = user
