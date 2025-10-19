@@ -118,6 +118,8 @@ A few things to note:
   at a specific url, provide that url pattern here.  The url pattern must take
   the username as a single argument using the standard python format style
   placeholder.  E.g. `https://github.com/{}-org.keys`
+* `service_freeipa_idpsync_http_proxy`: If an http/https proxy is required to
+  connect via http/https, this is the URL of the proxy.
 
 
 ## Groups used by this role

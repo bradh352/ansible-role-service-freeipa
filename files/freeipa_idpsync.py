@@ -417,12 +417,16 @@ def strtobool(val: str) -> bool:
     return False
 
 
-def fetch_sshpubkey(username: str, url_pattern: Optional[str]) -> Optional[str]:
+def fetch_sshpubkey(username: str, url_pattern: Optional[str], proxy: Optional[str]) -> Optional[str]:
     if url_pattern is None or len(url_pattern) == 0:
         return None
 
+    proxies = None
+    if proxy is not None and len(proxy) > 0:
+        proxies = { "http": proxy, "https": proxy }
+
     try:
-        response = requests.get(url_pattern.format(username))
+        response = requests.get(url_pattern.format(username), timeout=5, proxies=proxies)
     except:
         return None
 
@@ -487,7 +491,11 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
         # Usernames in the form of an email address must remove the suffix.
         username = idp_username.split("@")[0]
 
-        ssh_pubkey = fetch_sshpubkey(username, config["idp:ldap"].get("sshpubkey_url_pattern"))
+        ssh_pubkey = fetch_sshpubkey(
+            username,
+            config["general"].get("sshpubkey_url_pattern"),
+            config["general"].get("http_proxy")
+        )
 
         user = User(
             username=username,
