@@ -120,6 +120,17 @@
       shell: "ipa group-add-member --users=svc_admin service_accounts"
       when: svcadmingroup.rc != 0
 
+- name: "Enrollment Administrator includes Host Administrators"
+  run_once:  true
+  block:
+    - name: "See if Enrollment Administrator includes Host Administrators"
+      shell: "ipa role-show 'Enrollment Administrator'"
+      register: enroll_admin_perms
+      changed_when: "'Host Administrators' not in enroll_admin_perms"
+    - name: "Add Host Administrators privilege to Enrollment Administrator"
+      shell: "ipa role-add-privilege 'Enrollment Administrator' --privilege='Host Administrators'"
+      when: enroll_admin_perms.changed
+
 - name: "enrollment user"
   run_once: true
   block:
