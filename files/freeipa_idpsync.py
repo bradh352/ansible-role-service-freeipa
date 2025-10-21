@@ -541,6 +541,10 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
             config["general"].get("http_proxy")
         )
 
+        shell = fetch_string(attr, config["idp:ldap"].get("attr_shell"))
+        if shell is None or len(shell) == 0:
+            shell = "/bin/bash"
+
         user = User(
             username=username,
             fname=fetch_required_string(attr, config["idp:ldap"]["attr_fname"]),
@@ -551,7 +555,7 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
             auth_type="idp",
             idp_name=config["freeipa"]["idp_name"],
             idp_username=idp_username,
-            shell=fetch_string(attr, config["idp:ldap"].get("attr_shell")),
+            shell=shell,
             active=True if fetch_required_string(attr, config["idp:ldap"]["attr_active"]) in active_values else False,
             ssh_pubkey=ssh_pubkey
         )
