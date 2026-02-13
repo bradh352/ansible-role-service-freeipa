@@ -1,9 +1,9 @@
 ---
 - name: "Determine nodes which are initialized with Admin keytab"
-  stat:
+  ansible.builtin.stat:
     path: /etc/krb5.svc_admin.keytab
   delegate_to: "{{ item }}"
-  ignore_unreachable: yes
+  ignore_unreachable: true
   ignore_errors: true
   failed_when: false
   changed_when: false
@@ -11,61 +11,60 @@
   with_items: "{{ groups['freeipa_servers'] }}"
 
 - name: "See if we have the admin keytab installed"
-  stat:
+  ansible.builtin.stat:
     path: /etc/krb5.svc_admin.keytab
   register: freeipa_adminkeytab
 
 - name: "Determine which node to use for copying the admin keytab"
-  set_fact:
+  ansible.builtin.set_fact:
     freeipa_adminkeytab_nodes: >-
       {%- set eligible_adminkeytab_hosts = [] %}
       {%- if freeipa_nodes_adminkeytab.results is not defined %}
-      {%-   do freeipa_nodes_adminkeytab.update({ "results": [ freeipa_nodes_adminkeytab ] }) %}
+      {%-   do freeipa_nodes_adminkeytab.update({"results": [freeipa_nodes_adminkeytab]}) %}
       {%- endif %}
       {%- for node in freeipa_nodes_adminkeytab.results %}
-      {%-   if node.stat.exists|default(false) %}
+      {%-   if node.stat.exists | default(false) %}
       {%-     do eligible_adminkeytab_hosts.append(node.item) %}
       {%-   endif %}
       {%- endfor %}
       {{- eligible_adminkeytab_hosts -}}
 
 - name: "Determine admin keytab bootstrap node"
-  set_fact:
+  ansible.builtin.set_fact:
     freeipa_adminkeytab_bootstrap_node: "{{ freeipa_adminkeytab_nodes[0] if freeipa_adminkeytab_nodes | length > 0 else freeipa_primary_node }}"
 
 - name: "svc_admin create"
   when: not freeipa_adminkeytab.stat.exists and inventory_hostname == freeipa_adminkeytab_bootstrap_node
   block:
     - name: "Get kerberos ticket for admin user using password"
-      shell:
+      ansible.builtin.command:
         cmd: kinit admin
         stdin: "{{ service_freeipa_admin_pass }}"
         stdin_add_newline: true
       changed_when: false
     - name: "See if ipausers is a posix group"
-      shell: "ipa group-show ipausers --all | grep objectclass | grep posixgroup"
+      ansible.builtin.shell: "ipa group-show ipausers --all | grep objectclass | grep posixgroup"
       register: ipausers
       failed_when: false
       changed_when: false
     - name: "Make ipausers a posix group"
-      shell: "ipa group-mod ipausers --posix"
+      ansible.builtin.command: "ipa group-mod ipausers --posix"
       when: ipausers.rc != 0
     - name: "Create svc_admin account"
-      shell: |
+      ansible.builtin.shell: |
         ipa user-add svc_admin --first=svc --last=admin --random --noprivate --password-expiration=29990101000000Z && \
         ipa group-add-member --users='svc_admin' admins && \
         ipa group-remove-member --users='svc_admin' ipausers
     - name: "Create svc_admin keytab file"
-      shell: ipa-getkeytab -p svc_admin -k /etc/krb5.svc_admin.keytab
-
+      ansible.builtin.command: ipa-getkeytab -p svc_admin -k /etc/krb5.svc_admin.keytab
 - name: "Fetch the client admin keyring"
-  shell: base64 /etc/krb5.svc_admin.keytab
+  ansible.builtin.command: base64 /etc/krb5.svc_admin.keytab
   register: freeipa_adminkeytab_data
   when: inventory_hostname != freeipa_adminkeytab_bootstrap_node and not freeipa_adminkeytab.stat.exists
   delegate_to: "{{ freeipa_adminkeytab_bootstrap_node }}"
 
 - name: "Install the admin keytab"
-  copy:
+  ansible.builtin.copy:
     dest: "/etc/krb5.svc_admin.keytab"
     content: "{{ freeipa_adminkeytab_data.stdout | b64decode }}"
     mode: "600"
@@ -73,25 +72,25 @@
   when: inventory_hostname != freeipa_adminkeytab_bootstrap_node and not freeipa_adminkeytab.stat.exists
 
 - name: "Ensure permissions on admin keytab"
-  file:
+  ansible.builtin.file:
     path: "/etc/krb5.svc_admin.keytab"
     mode: "600"
     owner: root
 
 - name: "Get kerberos ticket for svc_admin user using admin keytab"
-  shell: kinit -k -t /etc/krb5.svc_admin.keytab svc_admin
+  ansible.builtin.command: kinit -k -t /etc/krb5.svc_admin.keytab svc_admin
   changed_when: false
 
 - name: "service_accounts"
   run_once: true
   block:
     - name: "See if the service_accounts group exists"
-      shell: "ips group-show service_accounts"
+      ansible.builtin.command: "ips group-show service_accounts"
       register: serviceaccounts
       failed_when: false
       changed_when: false
     - name: "Create a service_accounts group"
-      shell: "ipa group-add --desc='service accounts' service_accounts"
+      ansible.builtin.command: "ipa group-add --desc='service accounts' service_accounts"
       register: serviceaccounts
       failed_when: false
       changed_when: false
@@ -100,42 +99,42 @@
   run_once: true
   block:
     - name: "See if ipausers is a posix group"
-      shell: "ipa group-show ipausers --all | grep objectclass | grep posixgroup"
+      ansible.builtin.shell: "ipa group-show ipausers --all | grep objectclass | grep posixgroup"
       register: ipausers
       failed_when: false
       changed_when: false
     - name: "Make ipausers a posix group"
-      shell: "ipa group-mod ipausers --posix"
+      ansible.builtin.command: "ipa group-mod ipausers --posix"
       when: ipausers.rc != 0
 
 - name: "svc_admin add to service_accounts"
   run_once: true
   block:
     - name: "See if the svc_admin is in service_accounts"
-      shell: "ipa user-show svc_admin | grep 'Member of groups' | grep 'service_accounts'"
+      ansible.builtin.shell: "ipa user-show svc_admin | grep 'Member of groups' | grep 'service_accounts'"
       failed_when: false
       changed_when: false
       register: svcadmingroup
     - name: "Add svc_admin to service_accounts"
-      shell: "ipa group-add-member --users=svc_admin service_accounts"
+      ansible.builtin.command: "ipa group-add-member --users=svc_admin service_accounts"
       when: svcadmingroup.rc != 0
 
 - name: "Enrollment Administrator includes Host Administrators"
-  run_once:  true
+  run_once: true
   block:
     - name: "See if Enrollment Administrator includes Host Administrators"
-      shell: "ipa role-show 'Enrollment Administrator'"
+      ansible.builtin.command: "ipa role-show 'Enrollment Administrator'"
       register: enroll_admin_perms
       changed_when: "'Host Administrators' not in enroll_admin_perms.stdout"
     - name: "Add Host Administrators privilege to Enrollment Administrator"
-      shell: "ipa role-add-privilege 'Enrollment Administrator' --privilege='Host Administrators'"
+      ansible.builtin.command: "ipa role-add-privilege 'Enrollment Administrator' --privilege='Host Administrators'"
       when: enroll_admin_perms.changed
 
 - name: "enrollment user"
   run_once: true
   block:
     - name: "See if the enrollment user exists"
-      shell: "ipa user-show {{ service_freeipa_enroll_user }}"
+      ansible.builtin.command: "ipa user-show {{ service_freeipa_enroll_user }}"
       register: enrollment_user
       failed_when: false
       changed_when: false
@@ -154,12 +153,12 @@
   run_once: true
   block:
     - name: "See if sudo_allow_admins exits"
-      shell: "ipa sudorule-show sudo_allow_admins"
+      ansible.builtin.command: "ipa sudorule-show sudo_allow_admins"
       failed_when: false
       changed_when: false
       register: sudorule
     - name: "Add sudo rule"
-      shell: |
+      ansible.builtin.shell: |
         ipa sudorule-add sudo_allow_admins --hostcat=all --cmdcat=all --runasusercat=all --runasgroupcat=all && \
         ipa sudorule-add-user sudo_allow_admins --groups=admins
       when: sudorule.rc != 0
@@ -168,13 +167,13 @@
   run_once: true
   block:
     - name: "See if bind user has been created"
-      shell: "ldapsearch -b uid={{ service_freeipa_bind_user }},cn=sysaccounts,cn=etc,dc={{ service_freeipa_domain | split('.') | join(',dc=') }}"
+      ansible.builtin.command: "ldapsearch -b uid={{ service_freeipa_bind_user }},cn=sysaccounts,cn=etc,dc={{ service_freeipa_domain | split('.') | join(',dc=') }}"
       failed_when: false
       changed_when: false
       register: binduser
     - name: "Create bind user"
       when: binduser.rc != 0
-      shell:
+      ansible.builtin.command:
         cmd: "ldapmodify"
         stdin: |
           dn: uid={{ service_freeipa_bind_user }},cn=sysaccounts,cn=etc,dc={{ service_freeipa_domain | split(".") | join(",dc=") }}

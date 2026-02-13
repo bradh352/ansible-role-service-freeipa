@@ -25,9 +25,9 @@
   when: ansible_os_family == 'Debian'
 
 - name: "RedHat: Allow firewall rules"
-  firewalld:
-    immediate: yes
-    permanent: yes
+  ansible.posix.firewalld:
+    immediate: true
+    permanent: true
     service: "{{ item }}"
     state: enabled
   with_items:
@@ -45,34 +45,35 @@
     port: "{{ item.port }}"
     proto: "{{ item.proto }}"
   with_items:
-    - { "port": "80",  "proto": "tcp" }
+    - { "port": "80", "proto": "tcp" }
     - { "port": "443", "proto": "tcp" }
     - { "port": "389", "proto": "tcp" }
     - { "port": "636", "proto": "tcp" }
-    - { "port": "88",  "proto": "udp" }
-    - { "port": "88",  "proto": "tcp" }
+    - { "port": "88", "proto": "udp" }
+    - { "port": "88", "proto": "tcp" }
     - { "port": "464", "proto": "udp" }
     - { "port": "464", "proto": "tcp" }
   when: ansible_os_family == 'Debian'
 
 - name: Fixup ansible password for this playbook if it was changed in the base role
-  set_fact:
+  ansible.builtin.set_fact:
     ansible_password: "{{ superuser_password }}"
     ansible_become_pass: "{{ superuser_password }}"
   delegate_to: "{{ item }}"
-  delegate_facts: True
+  delegate_facts: true
   no_log: true
-  when: ansible_user == superuser and ((superuser_created is defined and superuser_created.changed) or (superuser_pwchanged is defined and superuser_pwchanged.changed))
+  when: ansible_user == superuser and ((superuser_created is defined and superuser_created.changed) or (superuser_pwchanged is defined and
+    superuser_pwchanged.changed))
   with_items: "{{ groups['freeipa_servers']|unique|sort }}"
 
 - name: Determine if FreeIPA server is already configured on the current node
-  shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
+  ansible.builtin.shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
   changed_when: false
   failed_when: false
   register: ipa_configured
 
 - name: Query which FreeIPA servers are configured
-  shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
+  ansible.builtin.shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
   register: ipa_configured_nodes
   delegate_to: "{{ item }}"
   with_items: "{{ groups['freeipa_servers']|unique|sort }}"
@@ -83,68 +84,72 @@
   changed_when: false
 
 - name: Collect list of configured freeipa nodes
-  set_fact:
+  ansible.builtin.set_fact:
     freeipa_configured_nodes: >-
       {%- set configured_nodes = [] %}
       {%- if ipa_configured_nodes.results is not defined %}
-      {%-   do ipa_configured_nodes.update({ "results": [ ipa_configured_nodes ] }) %}
+      {%-   do ipa_configured_nodes.update({"results": [ipa_configured_nodes]}) %}
       {%- endif %}
       {%- for node in ipa_configured_nodes.results %}
-      {%-   if node.rc|default(1) == 0 %}
+      {%-   if node.rc | default(1) == 0 %}
       {%-     do configured_nodes.append(node.item) %}
       {%-   endif %}
       {%- endfor %}
-      {{- configured_nodes|sort -}}
+      {{- configured_nodes | sort -}}
 
 - name: Determine primary node for bootstrap
-  set_fact:
+  ansible.builtin.set_fact:
     freeipa_primary_node: "{{ groups['freeipa_servers'] | intersect(ansible_play_hosts) | unique | sort | first }}"
 
 - name: Determine if we need to install the server or replica
-  set_fact:
-    freeipa_install_server: "{{ true if (ipa_configured.rc != 0 and freeipa_configured_nodes | length == 0 and inventory_hostname == freeipa_primary_node) else false }}"
-    freeipa_install_replica: "{{ true if (ipa_configured.rc != 0 and (freeipa_configured_nodes | length > 0 or inventory_hostname != freeipa_primary_node)) else false }}"
+  ansible.builtin.set_fact:
+    freeipa_install_server: "{{ true if (ipa_configured.rc != 0 and freeipa_configured_nodes | length == 0 and inventory_hostname == freeipa_primary_node) else false
+      }}"
+    freeipa_install_replica: "{{ true if (ipa_configured.rc != 0 and (freeipa_configured_nodes | length > 0 or inventory_hostname != freeipa_primary_node)) else false
+      }}"
 
 - name: "FreeIPA: setup new cluster, first node"
-  shell: ipa-server-install --unattended --no-host-dns --mkhomedir --no-ntp --ssh-trust-dns --ds-password="{{ service_freeipa_dm_pass }}" --admin-password="{{ service_freeipa_admin_pass }}" --realm="{{ service_freeipa_realm }}" --domain="{{ service_freeipa_domain }}"
+  ansible.builtin.command: ipa-server-install --unattended --no-host-dns --mkhomedir --no-ntp --ssh-trust-dns --ds-password="{{ service_freeipa_dm_pass }}"
+    --admin-password="{{ service_freeipa_admin_pass }}" --realm="{{ service_freeipa_realm }}" --domain="{{ service_freeipa_domain }}"
   when: freeipa_install_server
 
 - name: "FreeIPA: enroll replica as a client"
-  shell: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{ freeipa_configured_nodes[0]|default(freeipa_primary_node) }}" --domain="{{ service_freeipa_domain }}" --principal="admin" --password="{{ service_freeipa_admin_pass }}"
+  ansible.builtin.command: ipa-client-install --force-join --mkhomedir --ssh-trust-dns --unattended --server="{{
+    freeipa_configured_nodes[0]|default(freeipa_primary_node) }}" --domain="{{ service_freeipa_domain }}" --principal="admin" --password="{{
+    service_freeipa_admin_pass }}"
   when: freeipa_install_replica
 
 - name: Handle account and group creation for internal users
-  include_tasks: accounts.yml
+  ansible.builtin.include_tasks: accounts.yml
   run_once: true
 
 - name: Accounts
-  include_tasks: accounts.yml
-
+  ansible.builtin.include_tasks: accounts.yml
 - name: "Add replica to ipaservers host group"
-  shell: "ipa hostgroup-add-member ipaservers --hosts {{ inventory_hostname }}"
+  ansible.builtin.command: "ipa hostgroup-add-member ipaservers --hosts {{ inventory_hostname }}"
   throttle: 1
   when: freeipa_install_replica
 
 - name: "Configure replica"
-  shell: "ipa-replica-install --unattended --setup-ca"
+  ansible.builtin.command: "ipa-replica-install --unattended --setup-ca"
   throttle: 1
   when: freeipa_install_replica
 
 - name: "See if system is enrolled as a CA"
-  shell: "ipa server-find --topologysuffixes=ca --name={{ inventory_hostname }}"
+  ansible.builtin.command: "ipa server-find --topologysuffixes=ca --name={{ inventory_hostname }}"
   failed_when: false
   changed_when: false
   register: ipa_is_ca
 
 - name: "Install CA server"
-  shell: ipa-ca-install --password="{{ service_freeipa_dm_pass }}" --skip-conncheck
+  ansible.builtin.command: ipa-ca-install --password="{{ service_freeipa_dm_pass }}" --skip-conncheck
   throttle: 1
   when: ipa_is_ca.rc != 0
 
 - name: "Fix common-auth to work with IDP"
   ansible.builtin.blockinfile:
     path: /etc/pam.d/common-auth
-    insertbefore: '^#*auth.*\[.*\].*pam_unix.so nullok'
+    insertbefore: "^#*auth.*\\[.*\\].*pam_unix.so nullok"
     block: |
       auth  [default=1 ignore=ignore success=ok]  pam_usertype.so isregular
       auth  [default=1 ignore=ignore success=ok]  pam_localuser.so
@@ -160,8 +165,8 @@
     regexp: "{{ item.regexp }}"
     replace: "{{ item.val }}"
   with_items:
-    - { "regexp": '^(auth.*\[.*\].*pam_unix.so nullok)',        "val": '#\1' }
-    - { "regexp": '^(auth.*\[.*\].*pam_sss.so use_first_pass)', "val": '#\1' }
+    - { "regexp": "^(auth.*\\[.*\\].*pam_unix.so nullok)", "val": "#\\1" }
+    - { "regexp": "^(auth.*\\[.*\\].*pam_sss.so use_first_pass)", "val": "#\\1" }
   when: ansible_os_family == 'Debian'
 
 - name: "Handle proxy related settings"
@@ -172,9 +177,9 @@
     option: "{{ item.option }}"
     value: "{{ item.value }}"
   with_items:
-    - { "section": "global", "option": "http_proxy",  "value": "{{ service_freeipa_idp_proxy }}" }
+    - { "section": "global", "option": "http_proxy", "value": "{{ service_freeipa_idp_proxy }}" }
     - { "section": "global", "option": "https_proxy", "value": "{{ service_freeipa_idp_proxy }}" }
-    - { "section": "global", "option": "no_proxy",    "value": "{{ service_freeipa_idp_noproxy|default('')|join(',') }}" }
+    - { "section": "global", "option": "no_proxy", "value": "{{ service_freeipa_idp_noproxy | default('') | join(',') }}" }
   when: service_freeipa_idp_proxy is defined
 
 - name: "Make sure sssd enumerate is enabled and sudo can use kerberos"
@@ -184,12 +189,12 @@
     option: "{{ item.key }}"
     value: "{{ item.value }}"
   with_items:
-    - { "key": "enumerate",           "value": "True" }
+    - { "key": "enumerate", "value": "True" }
     - { "key": "pam_gssapi_services", "value": "sudo, sudo-i" }
   notify: restart_sssd
 
 - name: "sudo allow gssapi auth"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: "/etc/pam.d/{{ item }}"
     line: "auth sufficient pam_sss_gss.so"
     insertbefore: "{{ '^auth.*system-auth.*' if ansible_os_family == 'RedHat' else '@include common-auth' }}"
@@ -198,7 +203,7 @@
     - "sudo-i"
 
 - name: Re-Query which FreeIPA servers are configured
-  shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
+  ansible.builtin.shell: python3  -c "import sys; from ipalib import facts; sys.exit(0 if facts.is_ipa_configured() else 1);"
   register: ipa_configured_nodes
   delegate_to: "{{ item }}"
   with_items: "{{ groups['freeipa_servers']|unique|sort }}"
@@ -209,33 +214,33 @@
   changed_when: false
 
 - name: Re-Collect list of configured freeipa nodes
-  set_fact:
+  ansible.builtin.set_fact:
     freeipa_configured_nodes: >-
       {%- set configured_nodes = [] %}
       {%- if ipa_configured_nodes.results is not defined %}
-      {%-   do ipa_configured_nodes.update({ "results": [ ipa_configured_nodes ] }) %}
+      {%-   do ipa_configured_nodes.update({"results": [ipa_configured_nodes]}) %}
       {%- endif %}
       {%- for node in ipa_configured_nodes.results %}
-      {%-   if node.rc|default(1) == 0 %}
+      {%-   if node.rc | default(1) == 0 %}
       {%-     do configured_nodes.append(node.item) %}
       {%-   endif %}
       {%- endfor %}
-      {{- configured_nodes|sort -}}
+      {{- configured_nodes | sort -}}
 
 - name: Configure topologysuffix domain
-  include_tasks: topology.yml
+  ansible.builtin.include_tasks: topology.yml
   vars:
     freeipa_topology_suffix: "domain"
   when: freeipa_configured_nodes | length > 1
   run_once: true
 
 - name: Configure topologysuffix ca
-  include_tasks: topology.yml
+  ansible.builtin.include_tasks: topology.yml
   vars:
     freeipa_topology_suffix: "ca"
   when: freeipa_configured_nodes | length > 1
   run_once: true
 
 - name: Sync with external IDP
-  include_tasks: idp-sync.yml
+  ansible.builtin.include_tasks: idp-sync.yml
   when: service_freeipa_idpsync_enable

@@ -21,4 +21,3 @@ service_freeipa_idpsync_active_values:
 service_freeipa_idpsync_attr_group_name: "cn"
 service_freeipa_idpsync_attr_group_desc: "description"
 service_freeipa_idpsync_attr_group_members: "uniqueMember"
-

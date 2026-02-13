@@ -22,30 +22,31 @@
   when: ansible_os_family == 'RedHat'
 
 - name: Copy IDP sync script
-  copy:
+  ansible.builtin.copy:
     src: freeipa_idpsync.py
     dest: /usr/local/bin/freeipa_idpsync.py
-    mode: 0700
+    mode: "0700"
     owner: root
 
 - name: Install IDP sync configuration
-  template:
+  ansible.builtin.template:
     src: freeipa_idpsync.conf.j2
     dest: /etc/ipa/freeipa_idpsync.conf
-    mode: 0600
+    mode: "0600"
     owner: root
 
 - name: IDP Provider
   run_once: true
   block:
-  - name: See if IDP provider is already configured
-    shell: ipa idp-show "{{ service_freeipa_idpsync_idp_name }}"
-    register: idp_configured
-    changed_when: false
-    failed_when: false
-  - name: Configure IDP provider
-    shell: ipa idp-add {{ service_freeipa_idpsync_idp_name }} --provider={{ service_freeipa_idpsync_provider }} --base-url={{ service_freeipa_idpsync_provider_domain }} --client-id={{ service_freeipa_idpsync_clientid }}
-    when: idp_configured.rc != 0
+    - name: See if IDP provider is already configured
+      ansible.builtin.command: ipa idp-show "{{ service_freeipa_idpsync_idp_name }}"
+      register: idp_configured
+      changed_when: false
+      failed_when: false
+    - name: Configure IDP provider
+      ansible.builtin.command: ipa idp-add {{ service_freeipa_idpsync_idp_name }} --provider={{ service_freeipa_idpsync_provider }} --base-url={{
+        service_freeipa_idpsync_provider_domain }} --client-id={{ service_freeipa_idpsync_clientid }}
+      when: idp_configured.rc != 0
 
 # Figured out via
 # sesearch --allow -s ipa_otpd_t | grep port
@@ -58,8 +59,8 @@
   when: ansible_os_family == 'RedHat' and service_freeipa_idp_proxy is defined
 
 - name: "LDAPSYNC: Add cron task"
-  template:
+  ansible.builtin.template:
     src: freeipa-idpsync.cron
     dest: /etc/cron.d/freeipa-idpsync
     owner: root
-    mode: 0644
+    mode: "0644"
