@@ -8,21 +8,21 @@
       - sssd-tools
       - krb5-pkinit
     state: present
-  when: ansible_os_family == 'Debian'
+  when: ansible_facts['os_family'] == 'Debian'
 
 - name: "DNF: install FreeIPA Server"
   ansible.builtin.dnf:
     name:
       - freeipa-server
     state: present
-  when: ansible_os_family == 'RedHat'
+  when: ansible_facts['os_family'] == 'RedHat'
 
 - name: "Fix up paths in sssd idp support"
   ansible.builtin.replace:
     path: /etc/krb5.conf.d/sssd_enable_idp
     regexp: "/lib64/"
     replace: "/lib/x86_64-linux-gnu/"
-  when: ansible_os_family == 'Debian'
+  when: ansible_facts['os_family'] == 'Debian'
 
 - name: "RedHat: Allow firewall rules"
   ansible.posix.firewalld:
@@ -37,7 +37,7 @@
     - "ldap"
     - "ldaps"
     - "kpasswd"
-  when: ansible_os_family == 'RedHat'
+  when: ansible_facts['os_family'] == 'RedHat'
 
 - name: "UFW: Allow firewall rules"
   community.general.ufw:
@@ -53,7 +53,7 @@
     - { "port": "88", "proto": "tcp" }
     - { "port": "464", "proto": "udp" }
     - { "port": "464", "proto": "tcp" }
-  when: ansible_os_family == 'Debian'
+  when: ansible_facts['os_family'] == 'Debian'
 
 - name: Fixup ansible password for this playbook if it was changed in the base role
   ansible.builtin.set_fact:
@@ -157,7 +157,7 @@
       auth  [default=1 ignore=ignore success=ok]  pam_usertype.so isregular
       auth  sufficient          pam_sss.so forward_pass
     marker: "# {mark} ANSIBLE MANAGED BLOCK -- SSSD IDP SUPPORT"
-  when: ansible_os_family == 'Debian'
+  when: ansible_facts['os_family'] == 'Debian'
 
 - name: "Comment out lines that should no longer be used for auth"
   ansible.builtin.replace:
@@ -167,7 +167,7 @@
   with_items:
     - { "regexp": "^(auth.*\\[.*\\].*pam_unix.so nullok)", "val": "#\\1" }
     - { "regexp": "^(auth.*\\[.*\\].*pam_sss.so use_first_pass)", "val": "#\\1" }
-  when: ansible_os_family == 'Debian'
+  when: ansible_facts['os_family'] == 'Debian'
 
 - name: "Handle proxy related settings"
   community.general.ini_file:
@@ -197,7 +197,7 @@
   ansible.builtin.lineinfile:
     path: "/etc/pam.d/{{ item }}"
     line: "auth sufficient pam_sss_gss.so"
-    insertbefore: "{{ '^auth.*system-auth.*' if ansible_os_family == 'RedHat' else '@include common-auth' }}"
+    insertbefore: "{{ '^auth.*system-auth.*' if ansible_facts['os_family'] == 'RedHat' else '@include common-auth' }}"
   with_items:
     - "sudo"
     - "sudo-i"
