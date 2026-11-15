@@ -4,6 +4,7 @@ service_freeipa_idpsync_enable: false
 service_freeipa_idpsync_local_users: []
 service_freeipa_idpsync_local_groups: []
 service_freeipa_idpsync_use_ssl: true
+service_freeipa_idpsync_max_removals: 10
 service_freeipa_idpsync_ignore_users: []
 service_freeipa_idpsync_ignore_groups: []
 service_freeipa_idpsync_rename_groups: {}

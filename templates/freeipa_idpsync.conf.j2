@@ -9,6 +9,11 @@ sshpubkey_url_pattern={{ service_freeipa_idpsync_sshpubkey_url_pattern }}
 # If a proxy is needed for http requets, this is the location of the proxy.
 http_proxy={{ service_freeipa_idpsync_http_proxy }}
 
+# Maximum number of users to disable, or groups to delete, in a single run.  If
+# exceeded, the sync aborts without making any changes (protects against the
+# IDP returning partial results).  Override with --force.  -1 disables the check.
+max_removals={{ service_freeipa_idpsync_max_removals }}
+
 # Free IPA Configuration
 [freeipa]
 
