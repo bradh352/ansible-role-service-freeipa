@@ -56,7 +56,12 @@ class Group:
     is_flag=True,
     help="Output what would be done",
 )
-def sync(config_path: str, dry_run: bool):
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Proceed even if the number of users/groups to remove exceeds max_removals",
+)
+def sync(config_path: str, dry_run: bool, force: bool):
     """Sync users and groups from IDP to FreeIPA"""
     config = configparser.ConfigParser()
     config.read(config_path)
@@ -88,17 +93,34 @@ def sync(config_path: str, dry_run: bool):
     if dry_run:
         print("== DRY RUN ==")
 
+    # Users no longer in the IDP are disabled rather than deleted.  Deleting a
+    # user discards its POSIX uid/gid, so if the user reappears (or the IDP
+    # transiently returns a partial/empty result) it would be recreated with a
+    # new uid, orphaning file ownership everywhere.  A disabled user keeps its
+    # uid and is re-enabled automatically if it comes back.
+    removed_users = [user for user in users_not_in(freeipa_users, idp_users) if user.active]
+    deleted_groups = groups_not_in(freeipa_groups, idp_groups)
+
+    # Guard against a misbehaving IDP causing a mass removal.
+    max_removals = config["general"].getint("max_removals", fallback=10)
+    if not force and max_removals >= 0:
+        if len(removed_users) > max_removals or len(deleted_groups) > max_removals:
+            sys.exit(
+                f"ERROR: refusing to disable {len(removed_users)} users and delete {len(deleted_groups)} groups "
+                f"(max_removals={max_removals}).  Verify the IDP is returning complete results, then "
+                "re-run with --force if this is intended.  No changes were made."
+            )
+
     new_users = users_not_in(idp_users, freeipa_users)
     if len(new_users):
         print(f" * Adding {len(new_users)} new users")
         for user in new_users:
             freeipa_user_add(client, user, dry_run)
 
-    deleted_users = users_not_in(freeipa_users, idp_users)
-    if len(deleted_users):
-        print(f" * Deleting {len(deleted_users)} users")
-        for user in deleted_users:
-            freeipa_user_del(client, user, dry_run)
+    if len(removed_users):
+        print(f" * Disabling {len(removed_users)} users no longer in IDP")
+        for user in removed_users:
+            freeipa_user_disable(client, user, dry_run)
 
     new_groups = groups_not_in(idp_groups, freeipa_groups)
     if len(new_groups):
@@ -106,7 +128,6 @@ def sync(config_path: str, dry_run: bool):
         for group in new_groups:
             freeipa_group_add(client, group, dry_run)
 
-    deleted_groups = groups_not_in(freeipa_groups, idp_groups)
     if len(deleted_groups):
         print(f" * Deleting {len(deleted_groups)} groups")
         for group in deleted_groups:
@@ -122,7 +143,7 @@ def sync(config_path: str, dry_run: bool):
     if len(updated_groups):
         print(f"  * Updating {len(updated_groups)} groups")
         for group in updated_groups:
-            freeipa_group_mod(client, group, freeipa_groups[group.name], idp_users, dry_run)
+            freeipa_group_mod(client, group, freeipa_groups[group.name], dry_run)
 
     print("Sync Complete")
 
@@ -220,27 +241,25 @@ def freeipa_user_mod(client, idp_user: User, freeipa_user: User, dry_run: bool):
             client.Command.user_disable(idp_user.username)
 
 
-def freeipa_user_del(client, user: User, dry_run: bool):
+def freeipa_user_disable(client, user: User, dry_run: bool):
     """
-    Delete existing FreeIPA user.
+    Disable existing FreeIPA user that no longer exists in the IDP.  The user is
+    intentionally not deleted so its POSIX uid/gid are retained.
 
     Parameters:
         client [ClientMeta]: Connected and logged in FreeIPA session
-        user [User]: User to delete
+        user [User]: User to disable
         dry_run [bool]: If true, only print what would occur.
 
     Exceptions:
         python_freeipa.exceptions.BadRequest
     """
 
-    print(f"   * Deleting User {user.username}", flush=True)
+    print(f"   * Disabling User {user.username}", flush=True)
     if dry_run:
         return
 
-    client.Command.user_del(
-        user.username,
-        preserve=False,
-    )
+    client.Command.user_disable(user.username)
 
 
 def freeipa_group_add(client, group: Group, dry_run: bool):
@@ -275,9 +294,7 @@ def freeipa_group_add(client, group: Group, dry_run: bool):
                 )
 
 
-def freeipa_group_mod(
-    client, idpgroup: Group, freeipagroup: Group, idp_users: Dict[str, User], dry_run: bool
-):
+def freeipa_group_mod(client, idpgroup: Group, freeipagroup: Group, dry_run: bool):
     """
     Add FreeIPA group to modify.  Will also update group membership
 
@@ -285,8 +302,6 @@ def freeipa_group_mod(
         client [ClientMeta]: Connected and logged in FreeIPA session
         idpgroup [Group]: Updated group from IDP
         freeipagroup [Group]: Current group data from FreeIPA.  Used to compare changes such as group membership.
-        idp_users [Dict[str, User]]: List of known users to the IDP.  Used to exclude group membership changes for
-            deleted users.
         dry_run [bool]: If true, only print what would occur.
 
     Exceptions:
@@ -311,10 +326,8 @@ def freeipa_group_mod(
                     client.Command.group_add_member(idpgroup.name, user=member)
         for member in freeipagroup.members:
             if member not in idpgroup.members:
-                # On user deletion, we've pre-cached group membership, but it will be auto-removed so skip
-                # deleted users.
-                if member not in idp_users:
-                    continue
+                # Users removed from the IDP are disabled, not deleted, so their
+                # memberships are removed here like any other member.
                 print(f"     * Removing member {member}", flush=True)
                 if not dry_run:
                     client.Command.group_remove_member(idpgroup.name, user=member)
@@ -502,7 +515,9 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
 
     server = ldap3.Server(config["idp:ldap"]["server"], use_ssl=strtobool(config["idp:ldap"]["use_ssl"]))
     conn = ldap3.Connection(server, config["idp:ldap"]["binddn"], config["idp:ldap"]["bindpass"], auto_bind=True)
-    conn.search(
+    ldap_search(
+        conn,
+        "user",
         search_base=config["idp:ldap"]["userdn"],
         search_filter="(objectclass=*)",
         attributes=ldap3.ALL_ATTRIBUTES,
@@ -520,9 +535,6 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
             continue
         data = group.split("=")
         rename_groups[data[0]] = data[1]
-
-    if conn.response is None:
-        raise Exception("user search failed")
 
     users = {}
     for row in conn.response:
@@ -565,14 +577,16 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
 
         users[user.username] = user
 
-    conn.search(
+    if len(users) == 0:
+        raise Exception("user search returned no usable users, refusing to sync")
+
+    ldap_search(
+        conn,
+        "group",
         search_base=config["idp:ldap"]["groupdn"],
         search_filter="(objectclass=*)",
         attributes=ldap3.ALL_ATTRIBUTES,
     )
-
-    if conn.response is None:
-        raise Exception("group search failed")
 
     groups = {}
     for row in conn.response:
@@ -614,7 +628,35 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
             continue
 
         groups[group.name] = group
+
+    if len(groups) == 0:
+        raise Exception("group search returned no usable groups, refusing to sync")
+
     return users, groups
+
+
+def ldap_search(conn, what: str, **kwargs) -> None:
+    """
+    Perform an LDAP search, raising if the search did not complete successfully
+    or returned no entries.  An empty or partial result must never be treated
+    as authoritative since it would cause users/groups to be removed.
+
+    Parameters:
+        conn [ldap3.Connection]: Bound LDAP connection
+        what [str]: Description of the search for error messages
+        kwargs: Arguments passed to ldap3.Connection.search()
+
+    Exceptions:
+        Exception
+    """
+
+    conn.search(**kwargs)
+    # Anything other than success (e.g. sizeLimitExceeded) means a partial result.
+    result = conn.result or {}
+    if result.get("result") != 0:
+        raise Exception(f"{what} search failed: {result.get('description')} {result.get('message')}")
+    if not conn.response:
+        raise Exception(f"{what} search returned no entries, refusing to sync")
 
 
 def fetch_freeipa(client, config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict[str, Group]]:

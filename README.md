@@ -58,7 +58,14 @@ A few things to note:
   E.g. `[ "testenv.bradhouse.dev", ".testenv.bradhouse.dev" ]`
 * `service_freeipa_idpsync_enable`: Boolean.  Whether or not to sync users from
   an idp's ldap server. The remaining `service_freeipa_idpsync_*` configuration
-  values should be set when this is enabled.
+  values should be set when this is enabled.  Users that disappear from the IDP
+  are disabled, never deleted, so their POSIX uid/gid are preserved; they are
+  re-enabled automatically if they reappear.
+* `service_freeipa_idpsync_max_removals`: Maximum number of users to disable or
+  groups to delete in a single sync run.  If exceeded the sync aborts without
+  making any changes, protecting against an IDP returning partial results.
+  Run `freeipa_idpsync.py --force` manually to override.  `-1` disables the
+  check.  Defaults to `10`.
 * `service_freeipa_idpsync_idp_name`: Required. Name of IDP provider registered
   in FreeIPA to associate users with.
 * `service_freeipa_idpsync_provider`: Required. One of the supported FreeIPA
